@@ -1,0 +1,27 @@
+# Payroll Automation — Python dependencies
+# Install with: pip install -r requirements.txt
+# Requires Python 3.11+
+
+# UI
+PyQt6==6.7.1
+
+# Microsoft authentication
+msal==1.31.0
+msal-extensions==1.2.0
+
+# Microsoft Graph / SharePoint / HTTP
+requests==2.32.3
+
+# Excel file handling
+pandas==2.2.3
+openpyxl==3.1.5
+msoffcrypto-tool==5.4.2
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Console colour output (logger)
+colorama==0.4.6
+
+# Windows Credential Manager (production secret storage)
+keyring==25.3.0

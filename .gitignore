@@ -1,0 +1,58 @@
+# ── Environment ───────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── PyInstaller ───────────────────────────────────────────────────────────────
+build/
+dist/
+*.iss
+*.spec
+!Payroll.spec
+
+# ── App runtime data ───────────────────────────────────────────────────────────
+# These live in ~/Documents/Automations/ but exclude anything accidentally
+# dropped in the project folder
+data/
+logs/
+archive/
+validation/
+auth/
+
+# ── MSAL token cache ──────────────────────────────────────────────────────────
+*.bin
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.log
+*.xlsx
+*.csv
+
+# Installer build output
+installer/Output/
