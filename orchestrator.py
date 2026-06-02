@@ -456,6 +456,7 @@ class Orchestrator:
         latest = get_latest_release()
         if not latest:
             self.log.info("Orchestrator: Update check failed or no releases found — skipping")
+            self.body.show_sources()
             return
         
         self.log.info(f"App Version {self.state['current']}")
