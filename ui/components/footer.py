@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt
 
-from utils.app_config import get
+from utils.app_config import get, is_env
 
 
 class Footer(QWidget):
@@ -20,6 +20,7 @@ class Footer(QWidget):
         # resolve at runtime (safe + flexible)
         self.version = version or get("VERSION", "0.0.0")
         self.env = env or get("ENVT", "DEV")
+        self.is_env = is_env()
 
         self.setFixedHeight(40)
         self.setObjectName("footer")
@@ -59,14 +60,14 @@ class Footer(QWidget):
         # RIGHT GROUP
         right_layout = QHBoxLayout()
 
-        env_label = QLabel(self.env.upper())
+        env_label = QLabel(f"{'ENV' if self.is_env else 'Windows'} | {self.env.upper()}")
 
         env_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         env_label.setStyleSheet(f"""
 
             color: {self._get_env_color(self.env)};
-            font-size: 11px;
+            font-size: 8px;
             font-weight: 700;
 
         """)
@@ -105,6 +106,7 @@ class Footer(QWidget):
 
         # BUILD RIGHT SIDE
         right_layout.addWidget(env_label)
+
         
 
         right_widget = QWidget()

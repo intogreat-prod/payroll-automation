@@ -30,11 +30,11 @@ try:
 except ImportError:
     _KEYRING_AVAILABLE = False
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from pathlib import Path
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-loaded = load_dotenv(ENV_PATH, override=True)
+ENV_VALUES = dotenv_values(ENV_PATH)
 
 # Registry path written by the Inno Setup installer
 _REG_PATH = r"SOFTWARE\Intogreat\PayrollAutomation"
@@ -46,19 +46,22 @@ _KEYRING_SERVICE = "PayrollAutomation"
 # Everything else goes in the registry.
 _SECRET_KEYS = {"CLIENT_ID", "TENANT_ID"}
 
+
+def is_env():
+    value = ENV_VALUES.get("ENVT")
+    print("ENVT =", repr(value))
+    print("ENV_PATH =", ENV_PATH)
+    print("ENV_EXISTS =", ENV_PATH.exists())
+    return value is not None
+
 def get(key: str, fallback: str = "") -> str:
     """
     Reads a config value in priority order:
-        1. Environment variable / .env
-        2. Windows Credential Manager (secrets only)
-        3. Windows Registry
+        1. Windows Credential Manager (secrets only)
+        2. Windows Registry
+        3. Environment variable / .env
         4. fallback argument
     """
-
-    # ── .env / environment first ──────────────────────────────────────
-    value = os.getenv(key)
-    if value not in (None, ""):
-        return value
 
     # ── Secrets from Credential Manager ───────────────────────────────
     if key in _SECRET_KEYS and _KEYRING_AVAILABLE:
@@ -78,6 +81,11 @@ def get(key: str, fallback: str = "") -> str:
                     return value
         except (FileNotFoundError, OSError):
             pass
+
+    # ── .env / environment first ──────────────────────────────────────
+    value = ENV_VALUES.get(key)
+    if value not in (None, ""):
+        return value
 
     return fallback
 

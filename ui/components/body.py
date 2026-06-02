@@ -16,7 +16,7 @@ What it does NOT do:
 
 from PyQt6.QtWidgets import (
     QLineEdit, QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFrame
+    QPushButton, QLabel, QFrame, QProgressBar
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
@@ -289,8 +289,8 @@ class Body(QWidget):
         on_confirm is a lambda from the Orchestrator that triggers the download.
         """
         self._clear()
-        self._resize(400, 340)
-        self._layout.setContentsMargins(24, 24, 24, 24)
+        self._resize(400, 550)
+        self._layout.setContentsMargins(10, 10, 10, 10)
         self._layout.setSpacing(10)
         self._layout.addWidget(UIFactory.label(
             "Update Available",
@@ -317,21 +317,81 @@ class Body(QWidget):
         ))
         self._layout.addStretch()
         # Update now — triggers download then closes the app
-        update_btn = UIFactory.button(
+        self.update_btn = UIFactory.button(
             "Update Now",
             lambda: (
-                self._set_btn_processing(update_btn, "Downloading..."),
+                self._set_btn_processing(self.update_btn, "Downloading..."),
                 on_confirm()
             ),
             "payroll_button"
         )
-        self._layout.addWidget(update_btn)
+        self._layout.addWidget(self.update_btn)
         # Skip — proceeds to the normal sources screen
         self._layout.addWidget(UIFactory.button(
             "Skip for Now",
             lambda: self._emit_clicked("update_skipped"),
             "button"
         ))
+
+    # ===================================================================
+    # SCREEN 3.5 — UPDATE DOWNLOADING
+    # ===================================================================
+    def show_update_downloading(self, current_version: str, latest_version: str):
+        """
+        Shows download progress UI while installer is being downloaded.
+        """
+
+        self._clear()
+        self._resize(400, 470)
+        self._layout.setContentsMargins(10, 10, 10, 10)
+        self._layout.setSpacing(12)
+
+        # Header
+        self._layout.addWidget(UIFactory.label(
+            "Updating Payroll Automation",
+            style_key="header_label",
+            align="center"
+        ))
+
+        # Version info
+        self._layout.addWidget(UIFactory.label(
+            f"{current_version} → {latest_version}",
+            style_key="standard",
+            align="center"
+        ))
+
+        # Status text (dynamic update target)
+        self.download_status_label = UIFactory.label(
+            "Preparing download...",
+            style_key="standard",
+            align="center",
+            word_wrap=True
+        )
+        self._layout.addWidget(self.download_status_label)
+
+        # Progress label (percentage)
+        self.download_percent_label = UIFactory.label(
+            "0%",
+            style_key="header_label",
+            align="center"
+        )
+        self._layout.addWidget(self.download_percent_label)
+
+        # Progress bar
+        self.download_progress = QProgressBar()
+        self.download_progress.setRange(0, 100)
+        self.download_progress.setValue(0)
+        self.download_progress.setTextVisible(False)
+        self._layout.addWidget(self.download_progress)
+
+        # Hint text
+        self._layout.addWidget(UIFactory.label(
+            "Please do not close the application.",
+            style_key="standard_red",
+            align="center"
+        ))
+
+        self._layout.addStretch()
 
     # ===================================================================
     # SCREEN 4 — UPDATE DOWNLOAD FAILED
@@ -342,8 +402,8 @@ class Body(QWidget):
         Lets the user continue into the app normally.
         """
         self._clear()
-        self._resize(400, 280)
-        self._layout.setContentsMargins(24, 24, 24, 24)
+        self._resize(400, 400)
+        self._layout.setContentsMargins(10, 10, 10, 10)
         self._layout.setSpacing(10)
         self._layout.addWidget(UIFactory.label(
             "Update Failed",
@@ -369,7 +429,7 @@ class Body(QWidget):
 
     def show_sources(self):
         self._clear()
-        self._resize(350, 350)
+        self._resize(350, 370)
 
         col, layout = UIFactory.button_column(
             [

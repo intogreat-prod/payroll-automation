@@ -41,12 +41,11 @@ import sys
 import webbrowser
 import subprocess
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
-import requests
 
 from ui.main_window import MainWindow
+from ui.downloader import DownloadWorker
 from ui.statuses import (
     PAYROLL_STATUSES,
     CHECKER_STATUSES,
@@ -68,7 +67,7 @@ from utils.logger import Logger
 from utils.file_utils import app_data_path, validation_path
 from utils.email_template import WELCOME_EMAIL
 from utils.app_config import get
-from utils.updater import get_current_version, get_latest_release, is_newer, download_and_run
+from utils.updater import DownloadWorker, get_current_version, get_latest_release, is_newer
 
 from features.payroll import PayrollFeature
 from features.checker import CheckerFeature
@@ -90,6 +89,8 @@ class Orchestrator:
         # -----------------------------------------------------------
         now = datetime.now()
         self.state = {
+            "current":       None,
+            "latest":        None,
             "source":        None,
             "feature":       None,
             "logged_in":     False,
@@ -278,6 +279,12 @@ class Orchestrator:
             self.log.info(f"Orchestrator: Opening Night Differential List | url={url}")
             webbrowser.open(url)
 
+        elif btn == "update_skipped":
+            self.body.show_sources()  
+
+        elif btn == "update_error_continue":
+            self.body.show_sources()  
+
         else:
             self.log.warning(f"Orchestrator: Unhandled button | btn={btn}")
 
@@ -419,16 +426,21 @@ class Orchestrator:
         email = self.state["email"]
         allowed_users = config.get("users", [])
 
+        if self.envt == "DEV":
+            raise EnvironmentError("DEV in PROD")
+
         if email in allowed_users:
             self.log.info(f"Orchestrator: Access granted | name={self.state['name']} email={email}")
-            self._check_for_update()
-            self.body.show_sources()   # ← FIX: removed erroneous bare `raise`
+            if not self.envt == "DEV":
+                self._check_for_update()
+            #self.body.show_sources() 
+
         else:
             self.log.warning(f"Orchestrator: Access denied — user not in allowed list | email={email}")
             self.body.update_login_form("restricted_user")
 
     # ===================================================================
-    # CONFIG LOAD
+    # UPDATE APP
     # ===================================================================
     def _check_for_update(self):
         """
@@ -438,32 +450,46 @@ class Orchestrator:
         """
 
         self.log.section("UPDATE CHECK")
-        current = get_current_version()
-        self.log.info(f"Orchestrator: Current version {current} — checking for updates")
+        self.state["current"] = get_current_version()
+        self.log.info(f"Orchestrator: Current version {self.state['current']} — checking for updates")
         
         latest = get_latest_release()
         if not latest:
             self.log.info("Orchestrator: Update check failed or no releases found — skipping")
             return
         
-        latest_version, download_url = latest
+        self.log.info(f"App Version {self.state['current']}")
+        
+        self.state["latest"], asset_id = latest
 
-        if not is_newer(latest_version, current):
-            self.log.info(f"Orchestrator: Already up to date | version={current}")
+        if not is_newer(self.state["latest"], self.state["current"]):
+            self.log.info(f"Orchestrator: Already up to date | version={self.state['current']}")
+            self.body.show_sources() 
             return
         
-        self.log.info(f"Orchestrator: New version available | {current} → {latest_version}")
+        self.log.info(f"Orchestrator: New version available | {self.state['current']} → {self.state['latest']}")
 
         # Show a prompt — body handles the Yes/No UI
         # Wire body.on_update_confirmed to trigger the download
-        self.body.show_update_prompt(current, latest_version, on_confirm=lambda: self._do_update(download_url))
+        self.body.show_update_prompt(self.state["current"], self.state["latest"], on_confirm=lambda: self._do_update(asset_id))
 
-    def _do_update(self, download_url: str):
+    def _do_update(self, asset_id: str):
         """Downloads the installer and launches it. Closes the app after launch."""
         self.log.info("Orchestrator: User confirmed update — downloading installer")
+        self.body.show_update_downloading(self.state["current"], self.state["latest"])
 
-        launched = download_and_run(download_url, self.log)
-        if launched:
+        self.worker = DownloadWorker(asset_id, self.log, self._file_manager, self.state)
+        self.worker.progress.connect(self._on_download_progress)
+        self.worker.finished.connect(self._on_update_done)
+        self.worker.start()
+
+    def _on_download_progress(self, percent: int, message: str):
+        self.body.download_progress.setValue(percent)
+        self.body.download_percent_label.setText(f"{percent}%")
+        self.body.download_status_label.setText(message)
+
+    def _on_update_done(self, success:bool):
+        if success:
             self.log.info("Orchestrator: Installer launched — closing app")
             self.main_window.close()
         else:

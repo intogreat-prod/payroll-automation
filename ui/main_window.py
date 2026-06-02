@@ -9,11 +9,14 @@ card and exposes resize_to() for screens that need different sizes.
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
 
 from ui.styles import STYLES
 from ui.components.header import Header
 from ui.components.body import Body
 from ui.components.footer import Footer
+
+from utils.file_utils import resource_path
 
 
 class MainWindow(QMainWindow):
@@ -24,6 +27,7 @@ class MainWindow(QMainWindow):
         # Frameless + translucent for the glass card look
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
         self.resize(400, 350)
 
         # ---------------------------------------------------------------

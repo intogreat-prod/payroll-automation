@@ -62,6 +62,7 @@ def main():
     # Secrets (go to Credential Manager)
     parser.add_argument("--client-id",   required=True,  help="Azure AD app client ID")
     parser.add_argument("--tenant-id",   required=True,  help="Azure AD tenant ID")
+    parser.add_argument("--gh-pat",   required=True,  help="GitHub PAT for downloads")
 
     # Config (go to Registry)
     parser.add_argument("--sp-base-url", required=True,  help="SharePoint Graph base URL")
@@ -79,6 +80,7 @@ def main():
     write_secrets({
         "CLIENT_ID": args.client_id,
         "TENANT_ID": args.tenant_id,
+        "GH_PAT":    args.gh_pat
     })
 
     write_registry({
