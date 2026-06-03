@@ -42,7 +42,7 @@ from PyQt6.QtWidgets import QFileDialog
 
 from services.sharepoint_service import SharePointService
 from ui.statuses import parse_status_code
-from utils.app_config import get
+from utils.app_config_user import get
 
 # Maximum number of files the user may select in one upload session
 MAX_FILES = None   # None = derived from len(required_files) at runtime

@@ -25,7 +25,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import QMessageBox, QApplication
 
 from services.power_automate_service import PowerAutomateService
-from utils.app_config import get
+from utils.app_config_user import get
 
 
 def register_global_handler(log, state: dict = None, body=None, file_manager=None):

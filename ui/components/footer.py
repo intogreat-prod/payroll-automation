@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 
 from PyQt6.QtCore import Qt
 
-from utils.app_config import get, is_env
+from utils.app_config_user import get, is_env
 
 
 class Footer(QWidget):

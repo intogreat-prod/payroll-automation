@@ -66,7 +66,7 @@ from utils.internet import internet_available
 from utils.logger import Logger
 from utils.file_utils import app_data_path, validation_path
 from utils.email_template import WELCOME_EMAIL
-from utils.app_config import get
+from utils.app_config_user import get
 from utils.updater import DownloadWorker, get_current_version, get_latest_release, is_newer
 
 from features.payroll import PayrollFeature

@@ -23,7 +23,7 @@ import datetime
 import requests
 
 from utils.file_utils import app_data_path
-from utils.app_config import get
+from utils.app_config_user import get
 from services.sharepoint_service import SharePointService
 
 

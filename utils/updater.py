@@ -9,7 +9,7 @@ import tempfile
 import requests
 import tempfile
 
-from utils.app_config import get
+from utils.app_config_user import get
 
 from PyQt6.QtCore import QThread, pyqtSignal
 

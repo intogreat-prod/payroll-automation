@@ -10,7 +10,7 @@ workflow stays the same as before. You don't need to touch the registry
 or Credential Manager on your dev machine.
 
 Usage (replaces os.getenv everywhere):
-    from utils.app_config import get
+    from utils.app_config_user import get
     client_id = get("CLIENT_ID")
     sp_url    = get("SP_BASE_URL")
 """

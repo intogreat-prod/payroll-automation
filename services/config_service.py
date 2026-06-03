@@ -13,7 +13,7 @@ import json
 import os
 import requests
 
-from utils.app_config import get
+from utils.app_config_user import get
 
 
 class ConfigService:

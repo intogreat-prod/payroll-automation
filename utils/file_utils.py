@@ -19,7 +19,7 @@ loading asset files (images, icons).
 import os
 import sys
 from pathlib import Path
-from utils.app_config import get
+from utils.app_config_user import get
 
 
 def app_data_path() -> Path:

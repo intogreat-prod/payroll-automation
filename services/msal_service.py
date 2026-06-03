@@ -24,7 +24,7 @@ from msal_extensions import PersistedTokenCache, build_encrypted_persistence
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from utils.file_utils import app_data_path
-from utils.app_config import get
+from utils.app_config_user import get
 
 
 class LoginWorker(QThread):

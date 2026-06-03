@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout
 
 from ui.ui_factory import UIFactory
 
-from utils.app_config import get
+from utils.app_config_user import get
 
 
 class LoginForm(QWidget):
