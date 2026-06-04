@@ -20,8 +20,6 @@ env/
 build/
 dist/
 *.iss
-*.spec
-!Payroll.spec
 
 # ── App runtime data ───────────────────────────────────────────────────────────
 # These live in ~/Documents/Automations/ but exclude anything accidentally

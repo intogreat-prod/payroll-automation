@@ -66,32 +66,36 @@ pip install -r requirements.txt
 ```
 
 Copy `.env.example` to `.env` and fill in the values (see [Environment variables](#environment-variables) below).
+Download it at the Automation Team Sharepoint metadata's app folder
 
 ```bash
 python Payroll.py
 ```
 
-### PRE COMMIT GUIDE
-Use pre-commit hooks to automatically check and code formatting and issues before creating a commit.
-We use pre-commit library (https://pre-commit.com/) for this.
-To set it up,
-1. Install pre-commit
-To install pre-commit, run the following:
-```
-pip install pre-commit
-```
-2. Install the git hook script.
-Run the following to install the pre-commit Git hook.
-```
-pre-commit install
-```
-This will run pre-commit whenever you create a commit. It will check all the files in the commit to see if there are
-issues. If there are issues, it will either automatically fix them or give information about the issues, so you can
-fix it.
-If you ever want to run pre-commit manually, just execute the following:
-```
-pre-commit run --all-files
-```
+## Pushing Updates
+
+**Step 0:** PaChnage the version in the .iss file.
+
+**Step 1:** Package and compile the app.
+
+````bash
+pyinstaller --clean --onefile --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
+````
+
+**Step 2:** Package setup helper.
+
+````bash
+pyinstaller installer_user/setup_helper_user.spec
+````
+**Step 3:** Package uninstall helper.
+
+````bash
+pyinstaller installer_user/uninstall_helper_user.spec
+````
+**Step 4:** Package uninstall helper.
+
+Create a release in Github and upload the new PayrollAutomation_User_setup.exe
+
 
 ---
 
@@ -235,4 +239,7 @@ Output: `installer/Output/PayrollAutomation_Setup.exe`
 | `SP_BASE_URL`, `config_loc`, `loc`, etc. | Windows Registry (HKLM)    | OS ACL (admin write) |
 
 ### Config storage at a glance (No Admin-required App)
-| `.env` file                              | Dev machines only          | Encrypted                    |
+| Value                                                           | Where                      | Protected by        |
+| --------------------------------------------------------------- | -------------------------- | ------------------- |
+| `CLIENT_ID`, `TENANT_ID`, `SP_BASE_URL`, `config_loc`, `GH_PAT` | Windows Credential Manager | DPAPI (per OS user) |
+| `.env` file                                                     | {app_dir}/app              | NA                  |
