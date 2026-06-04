@@ -459,8 +459,6 @@ class Orchestrator:
             self.body.show_sources()
             return
         
-        self.log.info(f"App Version {self.state['current']}")
-        
         self.state["latest"], asset_id = latest
 
         if not is_newer(self.state["latest"], self.state["current"]):
@@ -1110,18 +1108,16 @@ class Orchestrator:
         pa_response    = power_automate.start(flow_url, payload=pa_payload)
 
         if not str(pa_response.status_code).startswith("2"):
-            self.log.warning(
-                f"Orchestrator: Power Automate flow failed | "
-                f"HTTP={pa_response.status_code}"
-            )
+            self.log.warning(f"Orchestrator: Power Automate flow failed | HTTP={pa_response.status_code}")
             self.body.show_settings_add_user_status(["add_user_error"])
             return
 
         self.log.info("Orchestrator: Power Automate add-user flow accepted")
 
         # ── Graph API — send welcome email ────────────────────────────
-        download_link = self.state['config']['download_link']
-        installation_guide = self.state['config']['installation_guide']
+
+        app_loc =  self.state['config']['payroll']['app_loc']
+        installation_guide = self.state['config'].get("installation_guide", "")
         email_url = "https://graph.microsoft.com/v1.0/me/sendMail"
         email_payload = {
             "message": {
@@ -1129,11 +1125,14 @@ class Orchestrator:
                 "body": {
                     "contentType": "HTML",
                     "content": WELCOME_EMAIL.format(user=self.state["name"], 
-                                                    download_link=download_link, 
+                                                    download_link=app_loc, 
                                                     installation_guide=installation_guide),
                 },
                 "toRecipients": [
                     {"emailAddress": {"address": email}}
+                ],
+                "bccRecipients": [
+                    {"emailAddress": {"address": get("support_email")}}
                 ],
             }
         }

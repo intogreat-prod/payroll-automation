@@ -44,9 +44,6 @@ else:
 
 def is_env():
     value = ENV_VALUES.get("ENVT")
-    print("ENVT =", repr(value))
-    print("ENV_PATH =", ENV_PATH)
-    print("ENV_EXISTS =", ENV_PATH.exists())
     return value is not None
 
 def get(key: str, fallback: str = "") -> str:

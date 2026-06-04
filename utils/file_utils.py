@@ -24,7 +24,7 @@ from utils.app_config_user import get
 
 def app_data_path() -> Path:
     """Returns (and creates) the root data folder: ~/Documents/Automations/<loc>/"""
-    path = Path.home() / "Documents" / "Automations" / get('loc', "Payroll")
+    path = Path(get("installation_loc", "").replace("/app", ""))
     path.mkdir(parents=True, exist_ok=True)
     return path
 

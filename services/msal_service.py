@@ -87,7 +87,9 @@ class MSALService:
         self.log.info("MSALService: Loading token cache")
         self.cache = self._load_cache()
 
-        self.log.info(f"MSALService: Building MSAL app | client={client_id}")
+        self.SCOPES = ["User.Read", "Sites.ReadWrite.All", "Files.ReadWrite", "Mail.Send"]
+
+        self.log.info(f"MSALService: Building MSAL app")
         self.app = msal.PublicClientApplication(
             client_id, authority=authority, token_cache=self.cache
         )

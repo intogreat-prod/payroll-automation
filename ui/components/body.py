@@ -310,7 +310,7 @@ class Body(QWidget):
             word_wrap=True
         ))
         self._layout.addWidget(UIFactory.label(
-            "The installer will run in the background.\nThe app will close and restart automatically.",
+        "The installer will run in the background. \n If the app did not restart automatically, please open it manually.",
             style_key="standard_red",
             align="center",
             word_wrap=True

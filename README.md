@@ -103,6 +103,7 @@ Create a `.env` file in the project root. All keys are required unless marked op
 | ------------- | ---------------------------------------------------------------------------------------------------- |
 | `CLIENT_ID`   | Azure AD app registration client ID                                                                  |
 | `TENANT_ID`   | Azure AD tenant ID                                                                                   |
+| `GH_PAT`      | GitHub Repo token                                                                                    |
 | `SP_BASE_URL` | Microsoft Graph SharePoint drive base URL, e.g. `https://graph.microsoft.com/v1.0/sites/<id>/drive/` |
 | `config_loc`  | Path to the config JSON inside the drive, e.g. `root:/Config/payroll_config.json:/content`           |
 | `loc`         | Leaf folder name under `~/Documents/Automations/` — separates prod/dev data on the same machine      |
@@ -226,10 +227,12 @@ Output: `installer/Output/PayrollAutomation_Setup.exe`
 2. Removes the install directory
 3. Removes the Start Menu group
 
-### Config storage at a glance
+### Config storage at a glance (Admin-required App)
 
 | Value                                    | Where                      | Protected by         |
 | ---------------------------------------- | -------------------------- | -------------------- |
 | `CLIENT_ID`, `TENANT_ID`                 | Windows Credential Manager | DPAPI (per OS user)  |
 | `SP_BASE_URL`, `config_loc`, `loc`, etc. | Windows Registry (HKLM)    | OS ACL (admin write) |
-| `.env` file                              | Dev machines only          | —                    |
+
+### Config storage at a glance (No Admin-required App)
+| `.env` file                              | Dev machines only          | Encrypted                    |

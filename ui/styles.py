@@ -34,9 +34,9 @@ _PAYROLL_BTN = """
     QPushButton {{
         border-radius: {radius}px;
         padding: {padding}px;
-        background-color: rgba(255, 255, 255, 0.95);
+        background-color: rgba(0, 0, 0, 0.75);
         border: 1px solid rgba(255, 255, 255, 1);
-        color: black;
+        color: white;
         font-weight: bold;
     }}
     QPushButton:hover {{
@@ -221,7 +221,7 @@ STYLES = {
             background: transparent;
         }
         #appCard {
-            background: rgba(255, 255, 255, 180);
+            background: rgba(255, 255, 255, 150);
             border-radius: 40px;
             border: 1px solid rgba(255, 255, 255, 200);
         }
