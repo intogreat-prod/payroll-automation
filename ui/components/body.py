@@ -815,9 +815,8 @@ class Body(QWidget):
         self._resize(530, height + ((result_count + payroll_files) * 10))
 
         # Restore upload button state
-        if not category == "settings":
-            if (category == "checker" and status_code == "validated_success") or category == "payroll":
-                self._set_btn_default(upload_btn)
+        if not category == "settings" and not status_code == "file_success":
+            self._set_btn_default(upload_btn)
 
     # ===================================================================
     # PAYROLL UI STATE CHANGES
