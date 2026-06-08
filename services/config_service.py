@@ -15,6 +15,7 @@ import requests
 
 from utils.app_config_user import get
 
+_TIMEOUT = 30
 
 class ConfigService:
 
@@ -26,7 +27,7 @@ class ConfigService:
     def get(self, token: str) -> requests.Response:
         """Downloads the config JSON. Raises on non-200."""
         headers  = {"Authorization": f"Bearer {token}"}
-        response = requests.get(self.config_url, headers=headers)
+        response = requests.get(self.config_url, headers=headers, timeout=_TIMEOUT)
 
         if response.status_code == 200:
             return response
@@ -48,4 +49,5 @@ class ConfigService:
             self.config_url,
             headers=headers,
             data=json.dumps(config_data, indent=4),
+            timeout=_TIMEOUT
         )

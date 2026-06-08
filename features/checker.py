@@ -36,13 +36,14 @@ from dotenv import load_dotenv
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog
 
-from ui.statuses import parse_status_code
+from utils.app_config_user import get
+from utils.file_utils import validation_path
 
 # Maximum number of checker files allowed per session
 MAX_FILES = 2
 
 # Password format used for encrypted checker files
-_PASSWORD_PREFIX = "INTOGREAT"
+_PASSWORD_PREFIX = get("PASSWORD_PREFIX","")
 
 
 class CheckerFeature:
@@ -113,16 +114,13 @@ class CheckerFeature:
         # Parent=None keeps the dialog independent of the main window.
         # Passing the main window as parent caused it to briefly flash.
         file_paths, _ = QFileDialog.getOpenFileNames(
-            None,
+            self.main_window,
             "Select Checker Excel Files",
             "",
             "Excel Files (*.xlsx *.xls)",
         )
 
-        self.log.info(
-            f"CheckerFeature: File dialog closed | "
-            f"selected={len(file_paths)} max={MAX_FILES}"
-        )
+        self.log.info(f"CheckerFeature: File dialog closed | selected={len(file_paths)} max={MAX_FILES}")
 
         # ── Guard: nothing selected ───────────────────────────────────
         if not file_paths:
@@ -132,10 +130,7 @@ class CheckerFeature:
 
         # ── Guard: too many files ─────────────────────────────────────
         if len(file_paths) > MAX_FILES:
-            self.log.warning(
-                f"CheckerFeature: Too many files | "
-                f"got={len(file_paths)} max={MAX_FILES}"
-            )
+            self.log.warning(f"CheckerFeature: Too many files | got={len(file_paths)} max={MAX_FILES}")
             self._emit_result("file_exceed_error")
             return
 
@@ -206,9 +201,7 @@ class CheckerFeature:
             Keys are file names (stem only, no directory).
             Values are DataFrames on success, or an error-code string.
         """
-        self.log.info(
-            f"CheckerFeature: Reading {len(file_paths)} file(s)"
-        )
+        self.log.info(f"CheckerFeature: Reading {len(file_paths)} file(s)")
         dataframes = {}
         year       = datetime.now().year
 
@@ -239,15 +232,10 @@ class CheckerFeature:
                 decrypted.seek(0)
                 df                   = pd.read_excel(decrypted, dtype=str)
                 dataframes[filename]  = df
-                self.log.info(
-                    f"CheckerFeature: Decrypted and read OK | file={filename}"
-                )
+                self.log.info(f"CheckerFeature: Decrypted and read OK | file={filename}")
 
             except Exception as e:
-                self.log.warning(
-                    f"CheckerFeature: Failed to read or decrypt | "
-                    f"file={filename} error={e}"
-                )
+                self.log.warning(f"CheckerFeature: Failed to read or decrypt |file={filename} error={e}")
                 dataframes[filename] = "sensitivity_error"
 
         return dataframes
@@ -398,3 +386,101 @@ class CheckerFeature:
             f"CheckerFeature: Handing {len(files)} file(s) to Orchestrator"
         )
         self.uploaded_files(files)
+
+    def generate(self, files, headers, source, var_tolerance):
+        """All pandas variance computation — runs entirely off the main thread."""
+        manual_df = None
+        unmand_df = None
+
+        for filename, df in files.items():
+            fname_lower = filename.lower()
+            if "manual" in fname_lower:
+                manual_df = df
+            elif "unmand" in fname_lower:
+                unmand_df = df
+
+        manual_df = manual_df if manual_df is not None else pd.DataFrame()
+        unmand_df = unmand_df if unmand_df is not None else pd.DataFrame()
+
+        def _get_totals(df: pd.DataFrame) -> dict:
+            if isinstance(df, pd.DataFrame) and "Employee ID" in df.columns:
+                mask      = df["Employee ID"].astype(str).str.lower().str.contains("total")
+                total_row = df[mask]
+                if not total_row.empty:
+                    row = total_row.iloc[0]
+                    return {h: row[h] if h in df.columns else 0 for h in headers}
+            return {h: 0 for h in headers}
+
+        manual_totals = _get_totals(manual_df)
+        unmand_totals = _get_totals(unmand_df)
+
+        output = []
+        for h in headers:
+            m = pd.to_numeric(manual_totals.get(h, 0), errors="coerce")
+            u = pd.to_numeric(unmand_totals.get(h, 0), errors="coerce")
+            m = 0 if pd.isna(m) else m
+            u = 0 if pd.isna(u) else u
+            output.append({
+                "Payroll Header": h,
+                "Manual Checker": m,
+                "Unmand Checker": u,
+                "Variance":       m - u,
+            })
+
+        output_df = pd.DataFrame(output)
+
+        id_col   = "Employee ID"
+        detailed = pd.DataFrame()
+
+        if isinstance(manual_df, pd.DataFrame) and isinstance(unmand_df, pd.DataFrame):
+            manual_cols = [h for h in headers if h in manual_df.columns]
+            unmand_cols = [h for h in headers if h in unmand_df.columns]
+
+            manual_long = manual_df.melt(
+                id_vars=[id_col], value_vars=manual_cols,
+                var_name="Payroll Header", value_name="Manual Value",
+            )
+            unmand_long = unmand_df.melt(
+                id_vars=[id_col], value_vars=unmand_cols,
+                var_name="Payroll Header", value_name="Unmand Value",
+            )
+
+            detailed = pd.merge(
+                manual_long, unmand_long,
+                on=[id_col, "Payroll Header"],
+                how="outer",
+            )
+            detailed["Manual Value"] = pd.to_numeric(
+                detailed["Manual Value"], errors="coerce"
+            ).fillna(0)
+            detailed["Unmand Value"] = pd.to_numeric(
+                detailed["Unmand Value"], errors="coerce"
+            ).fillna(0)
+            detailed["Variance"] = detailed["Manual Value"] - detailed["Unmand Value"]
+
+        manual_count = len(manual_df)
+        unmand_count = len(unmand_df)
+        accuracy     = (
+            (output_df["Variance"].abs() >= var_tolerance).sum() / len(output_df)
+            if len(output_df) > 0 else 0
+        )
+        accuracy_pct = round((1 - accuracy) * 100, 2)
+
+        file_path = (
+            validation_path() /
+            f"Checker_Variance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+
+        today  = datetime.now().strftime("%Y-%m-%d")
+        meta_df = pd.DataFrame({
+            "Info":  ["Date", "Manual Rows", "Unmand Rows", "Accuracy Rate", "Tolerance"],
+            "Value": [today, manual_count, unmand_count, f"{accuracy_pct}%", f"± {var_tolerance}"],
+        })
+
+        with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+            meta_df.to_excel(writer, sheet_name="Variance Report", index=False, startrow=0)
+            output_df.to_excel(writer, sheet_name="Variance Report", index=False, startrow=7)
+            if not detailed.empty:
+                detailed.to_excel(writer, sheet_name="Detailed Variance", index=False)
+
+        return file_path

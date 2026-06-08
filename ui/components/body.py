@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame, QProgressBar
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
 
 from ui.styles import STYLES
@@ -30,8 +30,10 @@ from utils.file_utils import resource_path
 
 class Body(QWidget):
 
-    def __init__(self):
+    def __init__(self, main_window):
         super().__init__()
+
+        self._main_window = main_window
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumHeight(50)
@@ -72,7 +74,8 @@ class Body(QWidget):
         while self._layout.count():
             item = self._layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                item.widget().hide()
+                item.widget().setParent(None)
             elif item.layout():
                 self._clear_layout(item.layout())
                 item.layout().deleteLater()
@@ -81,14 +84,12 @@ class Body(QWidget):
         while layout.count():
             item = layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                item.widget().hide()
+                item.widget().setParent(None)
 
     def _resize(self, w, h):
         """Ask the parent MainWindow to resize itself."""
-        from ui.main_window import MainWindow
-        window = self.window()
-        if isinstance(window, MainWindow):
-            window.resize_to(w, h)
+        self._main_window.resize_to(w, h)
 
     def _hide_statuses(self):
         try:
@@ -138,6 +139,7 @@ class Body(QWidget):
     def _set_btn_default(self, btn, default_text="Upload"):
         """Restore a button to its default state."""
         btn.setText(default_text)
+        btn.setEnabled(True)
 
     def _emit_clicked(self, btn):
         if self.on_clicked:
@@ -393,6 +395,12 @@ class Body(QWidget):
 
         self._layout.addStretch()
 
+    def update_download_progress(self, percent: int, message: str):
+        """Update the download progress bar and labels. Called from Orchestrator via signal."""
+        self.download_progress.setValue(percent)
+        self.download_percent_label.setText(f"{percent}%")
+        self.download_status_label.setText(message)
+
     # ===================================================================
     # SCREEN 4 — UPDATE DOWNLOAD FAILED
     # ===================================================================
@@ -436,7 +444,8 @@ class Body(QWidget):
                 ("DarwinBox", lambda: self._emit_clicked("DarwinBox_source"), "payroll_button"),
                 ("Sprout",    lambda: self._emit_clicked("Sprout_source"),    "payroll_button"),
             ],
-            spacing=12
+            spacing=12,
+            parent=self
         )
 
         layout.addStretch()
@@ -455,7 +464,8 @@ class Body(QWidget):
                 ("Payroll",  lambda: self._emit_clicked("payroll_feature"),  "payroll_button"),
                 ("Checker",  lambda: self._emit_clicked("checker_feature"),  "button"),
                 ("Settings", lambda: self._emit_clicked("settings_feature"), "button"),
-            ]
+            ],
+            parent=self
         )
 
         layout.addStretch()
@@ -475,7 +485,8 @@ class Body(QWidget):
                 ("Checker",  lambda: self._emit_clicked("checker_feature"),  "button"),
                 ("Settings", lambda: self._emit_clicked("settings_feature"), "button"),
             ],
-            width=150
+            width=150,
+            parent=self
         )
         layout.addStretch()
         col.setStyleSheet(STYLES['body'])
@@ -618,16 +629,6 @@ class Body(QWidget):
             "payroll_button"
         )
         content_layout.addWidget(self.checker_upload_btn)
-
-        # Aux buttons with dynamic visibility
-        validate_btn = UIFactory.button(
-            "Validate Checker",
-            lambda: self._emit_clicked("validate_checker"),
-            "payroll_button"
-        )
-        content_layout.addWidget(validate_btn)
-        self._register_aux_button("checker", "validate_btn", validate_btn,
-                                  visible_on=["file_success"])
 
         open_output_btn = UIFactory.button(
             "Open Output",
@@ -774,7 +775,6 @@ class Body(QWidget):
 
     def _show_status(self, category, codes, statuses, button_statuses, upload_btn, height, payroll_files):
         """Render status labels and reveal aux buttons."""
-
         result_count = 0
 
         self._hide_statuses()
@@ -816,7 +816,8 @@ class Body(QWidget):
 
         # Restore upload button state
         if not category == "settings":
-            self._set_btn_default(upload_btn)
+            if (category == "checker" and status_code == "validated_success") or category == "payroll":
+                self._set_btn_default(upload_btn)
 
     # ===================================================================
     # PAYROLL UI STATE CHANGES

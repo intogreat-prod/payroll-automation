@@ -190,13 +190,13 @@ class UIFactory:
 
     @staticmethod
     def button_row(buttons: list[tuple], width: int = None, height: int = None,
-                   spacing: int = 10, margin: tuple = (10, 10, 10, 10)) -> tuple[QWidget, QHBoxLayout]:
+                   spacing: int = 10, margin: tuple = (10, 10, 10, 10), parent: QWidget = None) -> tuple[QWidget, QHBoxLayout]:
         """
         Horizontal row of buttons.
         Each entry in buttons is (text, callback) or (text, callback, style_key).
         Returns (container, layout) in case you need to add more items later.
         """
-        container = QWidget()
+        container = QWidget(parent)
         layout    = QHBoxLayout(container)
         layout.setContentsMargins(*margin)
         layout.setSpacing(spacing)
@@ -213,13 +213,13 @@ class UIFactory:
 
     @staticmethod
     def button_column(buttons: list[tuple], width: int = None, height: int = None,
-                      spacing: int = 10, margin: tuple = (10, 10, 10, 10)) -> tuple[QWidget, QVBoxLayout]:
+                      spacing: int = 10, margin: tuple = (10, 10, 10, 10), parent: QWidget = None) -> tuple[QWidget, QVBoxLayout]:
         """
         Vertical stack of buttons.
         Each entry in buttons is (text, callback) or (text, callback, style_key).
         Returns (container, layout) in case you need to add more items later.
         """
-        container = QWidget()
+        container = QWidget(parent)
         layout    = QVBoxLayout(container)
         layout.setContentsMargins(*margin)
         layout.setSpacing(spacing)

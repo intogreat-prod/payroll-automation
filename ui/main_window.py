@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
         # Fixed components
         # ---------------------------------------------------------------
         self.header = Header()
-        self.body = Body()
+        self.body = Body(self)
         self.footer = Footer()
 
         card_layout.addWidget(self.header)
@@ -87,8 +87,10 @@ class MainWindow(QMainWindow):
     # ===================================================================
 
     def resize_to(self, w, h):
+        self,self.setUpdatesEnabled(False)
         self.setFixedSize(w, h)
         self.app_card.setFixedSize(w - 10, h - 10)
+        self.setUpdatesEnabled(True)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

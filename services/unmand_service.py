@@ -37,7 +37,7 @@ class UnmandService:
         Triggers the Unmand payroll robot.
         On success, response.json()["taskGuid"] is what you pass to check_status().
         """
-        return requests.post(self.webhook_url, json=payload, auth=self._auth)
+        return requests.post(self.webhook_url, json=payload, auth=self._auth, timeout=30)
 
     def check_status(self, task_guid: str) -> str:
         """
@@ -45,7 +45,7 @@ class UnmandService:
         Raises UserWarning on a non-2xx response.
         """
         url      = self._STATUS_ENDPOINT.format(task_guid=task_guid)
-        response = requests.get(url, auth=self._auth)
+        response = requests.get(url, auth=self._auth, timeout=30)
 
         if not str(response.status_code).startswith("2"):
             raise UserWarning(f"UnmandService: Status check failed — HTTP {response.status_code}")

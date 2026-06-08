@@ -53,6 +53,7 @@ utils/
     file_utils.py       # Path helpers (app_data_path, resource_path, etc.)
     internet.py         # Quick connectivity check at startup
     email_template.py   # Welcome email HTML template
+    app_config_user.py  # Fetch data from env and Windows Secret Manager
 ```
 
 ---
@@ -71,31 +72,6 @@ Download it at the Automation Team Sharepoint metadata's app folder
 ```bash
 python Payroll.py
 ```
-
-## Pushing Updates
-
-**Step 0:** PaChnage the version in the .iss file.
-
-**Step 1:** Package and compile the app.
-
-````bash
-pyinstaller --clean --onefile --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
-````
-
-**Step 2:** Package setup helper.
-
-````bash
-pyinstaller installer_user/setup_helper_user.spec
-````
-**Step 3:** Package uninstall helper.
-
-````bash
-pyinstaller installer_user/uninstall_helper_user.spec
-````
-**Step 4:** Package uninstall helper.
-
-Create a release in Github and upload the new PayrollAutomation_User_setup.exe
-
 
 ---
 
@@ -137,7 +113,7 @@ The app fetches a JSON config file from SharePoint on every login. It controls:
 
 ```bash
 pip install pyinstaller
-pyinstaller Payroll.spec
+pyinstaller --clean --onefile --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
 ```
 
 The bundled `.exe` will be in `dist/`. Asset files (images, icons) are resolved via `resource_path()` which handles the `sys._MEIPASS` path automatically.
@@ -184,6 +160,7 @@ All runtime data is written to:
 
 ### Step 1 — Fill in your values
 
+Download it at the Automation Team Sharepoint metadata's app folder
 Open `installer/PayrollAutomation.iss` and update the `[Config]` section at the top:
 
 ```
@@ -199,7 +176,7 @@ These values are embedded into the installer and written to the target machine d
 
 ```bash
 # Main app
-pyinstaller Payroll.spec
+pyinstaller --clean --onefile --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
 
 # Setup helper (writes registry + Credential Manager on install)
 pyinstaller installer/setup_helper.spec

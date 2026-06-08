@@ -40,20 +40,21 @@ def main():
    parser = argparse.ArgumentParser()
 
    # Secrets (go to Credential Manager)
-   parser.add_argument("--client-id",      required=True)
-   parser.add_argument("--tenant-id",      required=True)
-   parser.add_argument("--sp-base-url",    required=True)
-   parser.add_argument("--gh-pat",         required=False, default="")
-   parser.add_argument("--config-loc",     required=True)
+   parser.add_argument("--client-id",           required=True)
+   parser.add_argument("--tenant-id",           required=True)
+   parser.add_argument("--sp-base-url",         required=True)
+   parser.add_argument("--gh-pat",              required=False, default="")
+   parser.add_argument("--config-loc",          required=True)
+   parser.add_argument("--password-prefix",     required=False, default="INTOGREAT")
 
    # Secrets (go to .env)
-   parser.add_argument("--loc",            required=True)
-   parser.add_argument("--installation",   required=True)
-   parser.add_argument("--app-name",       required=True)
-   parser.add_argument("--envt",           required=True)
-   parser.add_argument("--version",        required=False, default="0.0.0")
-   parser.add_argument("--support-email",  required=False, default="")
-   parser.add_argument("--app-dir",        required=True, help="Directory where the .exe lives")
+   parser.add_argument("--loc",                 required=True)
+   parser.add_argument("--installation",        required=True)
+   parser.add_argument("--app-name",            required=True)
+   parser.add_argument("--envt",                required=True)
+   parser.add_argument("--version",             required=False, default="0.0.0")
+   parser.add_argument("--support-email",       required=False, default="")
+   parser.add_argument("--app-dir",             required=True, help="Directory where the .exe lives")
    args = parser.parse_args()
 
    print("\nPayroll Automation — Writing configuration file...\n")
@@ -65,6 +66,7 @@ def main():
        "ENVT":                   args.envt,
        "VERSION":                args.version,
        "support_email":          args.support_email
+       
    })
 
    write_secrets({
@@ -73,6 +75,7 @@ def main():
       "GH_PAT":                  args.gh_pat,
       "SP_BASE_URL":             args.sp_base_url,
       "config_loc":              args.config_loc,
+      "PASSWORD_PREFIX":         args.password_prefix
    })
    
    print("Setup complete.\n")

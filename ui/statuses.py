@@ -119,7 +119,7 @@ CHECKER_STATUSES = {
     # ── File count / identity errors ──────────────────────────────────
     "no_file_error":          "No files selected — aborting upload.",
     "file_exceed_error":      "Number of files exceeds the expected limit "
-                              f"of 2. Please verify your upload.",
+                              "of 2. Please verify your upload.",
     "manual_error":           "Manual Checker file not found.",
     "unmand_error":           "Unmand Checker file not found.",
 

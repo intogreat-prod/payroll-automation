@@ -36,6 +36,8 @@ def register_global_handler(log, state: dict = None, body=None, file_manager=Non
     if config isn't loaded yet or the UI isn't built.
     """
 
+    #log.section("ERROR HANDLER")
+
     def _handler(exc_type, exc_value, exc_tb):
         # Let Ctrl-C through so devs can kill the process normally
         if issubclass(exc_type, KeyboardInterrupt):

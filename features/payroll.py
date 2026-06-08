@@ -48,7 +48,7 @@ from utils.app_config_user import get
 MAX_FILES = None   # None = derived from len(required_files) at runtime
 
 # Password format used for encrypted payroll files
-_PASSWORD_PREFIX = "INTOGREAT"
+_PASSWORD_PREFIX = get("PASSWORD_PREFIX","")
 
 
 class PayrollFeature:
@@ -173,7 +173,7 @@ class PayrollFeature:
         # Parent=None keeps the dialog independent of the main window.
         # Passing the main window as parent caused it to briefly flash.
         file_paths, _ = QFileDialog.getOpenFileNames(
-            None,
+            self.main_window,
             "Select Payroll Excel Files",
             "",
             "Excel Files (*.xlsx *.xls)",

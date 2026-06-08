@@ -17,7 +17,6 @@ Callbacks are wired by the Orchestrator after construction:
     msal.error_login(error_str)
 """
 
-import os
 import msal
 import requests
 from msal_extensions import PersistedTokenCache, build_encrypted_persistence
@@ -62,10 +61,11 @@ class LoginWorker(QThread):
 
 class MSALService:
 
+    # Single authoritative scope list — matches Graph API permissions
     SCOPES = [
         "User.Read",
-        "Sites.Read.All",
-        "Files.ReadWrite.All",
+        "Sites.ReadWrite.All",
+        "Files.ReadWrite",
         "Mail.Send",
     ]
 
@@ -78,7 +78,7 @@ class MSALService:
         self.error_login       = None
 
         self.token  = None
-        self.worker = None  # keep a reference so the QThread isn't garbage collected
+        self.worker = None  # keep a reference so the QThread isn't GC'd
 
         client_id = get("CLIENT_ID")
         tenant_id = get("TENANT_ID")
@@ -87,9 +87,7 @@ class MSALService:
         self.log.info("MSALService: Loading token cache")
         self.cache = self._load_cache()
 
-        self.SCOPES = ["User.Read", "Sites.ReadWrite.All", "Files.ReadWrite", "Mail.Send"]
-
-        self.log.info(f"MSALService: Building MSAL app")
+        self.log.info("MSALService: Building MSAL app")
         self.app = msal.PublicClientApplication(
             client_id, authority=authority, token_cache=self.cache
         )
@@ -184,6 +182,7 @@ class MSALService:
         response = requests.get(
             "https://graph.microsoft.com/v1.0/me",
             headers={"Authorization": f"Bearer {self.token}"},
+            timeout=10,
         )
 
         if response.status_code == 200:
