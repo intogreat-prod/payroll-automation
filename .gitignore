@@ -29,6 +29,7 @@ logs/
 archive/
 validation/
 auth/
+Payroll 2 fixed/
 
 # ── MSAL token cache ──────────────────────────────────────────────────────────
 *.bin

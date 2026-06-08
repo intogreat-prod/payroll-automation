@@ -28,7 +28,7 @@ from dotenv import load_dotenv, dotenv_values
 # Registry paths (admin install only)
 _REG_PATH        = r"SOFTWARE\Intogreat\PayrollAutomation"
 _KEYRING_SERVICE = "PayrollAutomation"
-_SECRET_KEYS     = {"CLIENT_ID", "TENANT_ID"}
+_SECRET_KEYS     = {"CLIENT_ID", "TENANT_ID", "SP_BASE_URL", "config_loc", "GH_PAT"}
 
 # Load .env from the app directory first (user install), then from current dir (dev)
 _APP_DIR = os.path.dirname(sys.executable) if hasattr(sys, 'frozen') else os.getcwd()
