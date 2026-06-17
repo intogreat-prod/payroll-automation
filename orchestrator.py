@@ -38,9 +38,10 @@ import io
 import json
 import os
 import re
-import subprocess
 import sys
 import webbrowser
+import subprocess
+from pathlib import Path
 from datetime import datetime
 
 import pandas as pd
@@ -99,6 +100,9 @@ class _ConfigWorker(QThread):
 class _UpdateCheckWorker(QThread):
     """Checks GitHub Releases for a newer version off the main thread."""
     finished = pyqtSignal(object)   # (latest_tag, asset_id) | None
+
+    def __init__(self):
+        super().__init__()
 
     def run(self):
         self.finished.emit(get_latest_release())
@@ -431,8 +435,9 @@ class Orchestrator:
 
         elif btn == "restart":
             self._file_manager.upload_log(self.state)
-            self.log.info("Orchestrator: Restart triggered")
-            subprocess.Popen([sys.executable] + sys.argv)
+            executable = Path(sys.argv[0]).resolve() if getattr(sys, "frozen", False) else Path(sys.executable)
+            self.log.info(f"Orchestrator: Restart triggered - Loc:{executable}")
+            subprocess.Popen([str(executable)])
             os._exit(0)
 
     # ===================================================================

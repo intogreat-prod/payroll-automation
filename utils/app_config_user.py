@@ -28,13 +28,14 @@ from dotenv import load_dotenv, dotenv_values
 # Registry paths (admin install only)
 _REG_PATH        = r"SOFTWARE\Intogreat\PayrollAutomation"
 _KEYRING_SERVICE = "PayrollAutomation"
-_SECRET_KEYS     = {"CLIENT_ID", "TENANT_ID", "SP_BASE_URL", "config_loc", "GH_PAT"}
+_SECRET_KEYS     = {"CLIENT_ID", "TENANT_ID", "SP_BASE_URL", "config_loc", "GH_PAT", "PASSWORD_PREFIX"}
 
 # Load .env from the app directory first (user install), then from current dir (dev)
 _APP_DIR = os.path.dirname(sys.executable) if hasattr(sys, 'frozen') else os.getcwd()
 _ENV_PATH = os.path.join(_APP_DIR, ".env")
 
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+
 ENV_VALUES = dotenv_values(ENV_PATH)
 
 if os.path.exists(_ENV_PATH):

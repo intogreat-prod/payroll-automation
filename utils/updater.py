@@ -5,8 +5,10 @@ private repo. The token only needs Contents: Read-only permission.
 """
 
 import os
+import sys
 import subprocess
 import tempfile
+from pathlib import Path
 
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -125,13 +127,19 @@ class DownloadWorker(QThread):
 
             self.progress.emit(100, "Launching installer...")
 
-            subprocess.Popen(
+            installer = subprocess.Popen(
                 [tmp_path, "/VERYSILENT", "/NORESTART", "/CLOSEAPPLICATIONS"],
                 close_fds=True,
             )
-
+            
+            installer.wait()
+            executable = Path(sys.argv[0]).resolve()
             self.file_manager.upload_log(self.state)
+            self.log.info(str(executable))
+            subprocess.Popen([str(executable)], creationflags=subprocess.CREATE_NO_WINDOW)
+
             self.finished.emit(True)
+            os._exit(0)
 
         except Exception as e:
             self.log.warning(f"Updater: Download failed — {e}")

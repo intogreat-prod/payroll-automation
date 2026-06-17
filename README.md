@@ -176,7 +176,7 @@ These values are embedded into the installer and written to the target machine d
 
 ```bash
 # Main app
-pyinstaller --clean --onefile --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
+pyinstaller --clean --onedir --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py   
 
 # Setup helper (writes registry + Credential Manager on install)
 pyinstaller installer/setup_helper.spec

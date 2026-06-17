@@ -20,6 +20,7 @@ env/
 build/
 dist/
 *.iss
+*.exe
 
 # ── App runtime data ───────────────────────────────────────────────────────────
 # These live in ~/Documents/Automations/ but exclude anything accidentally

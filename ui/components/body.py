@@ -15,10 +15,10 @@ What it does NOT do:
 """
 
 from PyQt6.QtWidgets import (
-    QLineEdit, QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFrame, QProgressBar
+    QScrollArea, QWidget, QVBoxLayout,
+    QLabel, QFrame, QProgressBar
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 
 from ui.styles import STYLES
@@ -27,6 +27,7 @@ from ui.ui_factory import UIFactory
 from ui.components.login_form import LoginForm
 from utils.file_utils import resource_path
 
+import time
 
 class Body(QWidget):
 
@@ -776,6 +777,7 @@ class Body(QWidget):
     def _show_status(self, category, codes, statuses, button_statuses, upload_btn, height, payroll_files):
         """Render status labels and reveal aux buttons."""
         result_count = 0
+
 
         self._hide_statuses()
 
