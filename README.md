@@ -113,7 +113,7 @@ The app fetches a JSON config file from SharePoint on every login. It controls:
 
 ```bash
 pip install pyinstaller
-pyinstaller --clean --onefile --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
+pyinstaller --clean --onedir --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
 ```
 
 The bundled `.exe` will be in `dist/`. Asset files (images, icons) are resolved via `resource_path()` which handles the `sys._MEIPASS` path automatically.

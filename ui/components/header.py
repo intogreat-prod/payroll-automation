@@ -121,7 +121,7 @@ class Header(QWidget):
                 border: none;
                 background: transparent;
 
-                color: #7A7A7A;
+                color: white;
 
                 font-size: 12px;
                 font-weight: 600;
@@ -150,7 +150,7 @@ class Header(QWidget):
 
         # LOGO
         logo = QLabel()
-        pixmap = QPixmap(resource_path("assets/logo.png"))
+        pixmap = QPixmap(resource_path("assets/logo_light.png"))
 
         if not pixmap.isNull():
 
@@ -172,7 +172,7 @@ class Header(QWidget):
         date_label.setStyleSheet("""
 
             font-size: 13px;
-            color: #5A5A5A;
+            color: white;
             font-weight: 500;
 
         """)

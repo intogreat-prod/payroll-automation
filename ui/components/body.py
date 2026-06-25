@@ -156,7 +156,7 @@ class Body(QWidget):
         Renders a system error screen directly in the app body.
         """
         self._clear()
-        self._resize(530, 600)
+        self._resize(530, 700)
         self._layout.setContentsMargins(16, 16, 16, 16)
 
         self._layout.addWidget(UIFactory.label(
@@ -435,15 +435,15 @@ class Body(QWidget):
     # ===================================================================
     # SCREEN 5 — SOURCE SELECTION
     # ===================================================================
-
     def show_sources(self):
         self._clear()
-        self._resize(350, 370)
+        self._resize(350, 420)
 
         col, layout = UIFactory.button_column(
             [
-                ("DarwinBox", lambda: self._emit_clicked("DarwinBox_source"), "payroll_button"),
-                ("Sprout",    lambda: self._emit_clicked("Sprout_source"),    "payroll_button"),
+                ("DarwinBox",           lambda: self._emit_clicked("DarwinBox_source"), "payroll_button"),
+                ("Sprout",              lambda: self._emit_clicked("Sprout_source"),    "payroll_button"),
+                ("Additional Tools",    lambda: self._emit_clicked("Additional_tools"),  "payroll_button"),
             ],
             spacing=12,
             parent=self
@@ -452,10 +452,26 @@ class Body(QWidget):
         layout.addStretch()
         self._layout.addWidget(col)
 
+    def _horizontal_menu_sources(self):
+        self._layout.setSpacing(8)
+        self.setStyleSheet(STYLES["body_clear"])
+
+        col, layout = UIFactory.button_row(
+            [
+                ("DarwinBox",           lambda: self._emit_clicked("DarwinBox_source"), "payroll_button"),
+                ("Sprout",              lambda: self._emit_clicked("Sprout_source"),    "payroll_button"),
+                ("Additional Tools",    lambda: self._emit_clicked("Additional_tools"),  "payroll_button"),
+            ],
+            width=150,
+            parent=self
+        )
+        layout.addStretch()
+        col.setStyleSheet(STYLES['body'])
+        self._layout.addWidget(col)
+
     # ===================================================================
     # SCREEN 6 — FEATURE LIST
     # ===================================================================
-
     def show_features(self):
         self._clear()
         self._resize(350, 400)
@@ -476,7 +492,7 @@ class Body(QWidget):
     # SCREEN 7 — FEATURE VIEWS
     # ===================================================================
 
-    def _horizontal_menu(self):
+    def _horizontal_menu_features(self):
         self._layout.setSpacing(8)
         self.setStyleSheet(STYLES["body_clear"])
 
@@ -495,7 +511,7 @@ class Body(QWidget):
 
     def show_payroll_feature(self, required_files):
         self._clear()
-        self._horizontal_menu()
+        self._horizontal_menu_features()
         self.required_files_len = len(required_files)
 
         self._layout.setContentsMargins(10, 10, 10, 10)
@@ -590,7 +606,7 @@ class Body(QWidget):
 
     def show_checker_feature(self):
         self._clear()
-        self._horizontal_menu()
+        self._horizontal_menu_features()
 
         self._layout.setContentsMargins(10, 10, 10, 10)
         self._resize(530, 620)
@@ -650,7 +666,7 @@ class Body(QWidget):
 
     def show_settings_feature(self, users, deminimis):
         self._clear()
-        self._horizontal_menu()
+        self._horizontal_menu_features()
 
         self._layout.setContentsMargins(10, 10, 10, 10)
         self._resize(530, 880)
@@ -742,6 +758,83 @@ class Body(QWidget):
 
         self._layout.addWidget(content)
 
+    # ===================================================================
+    # SCREEN 8 — ADDITIONAL TOOLS
+    # ===================================================================
+    def show_additional_tools(self):
+        self._clear()
+        self._horizontal_menu_sources()
+
+        self._layout.setContentsMargins(10, 10, 10, 10)
+        self._resize(530, 750)
+
+        content = QFrame()
+        content.setObjectName("featureContent")
+        content.setStyleSheet(STYLES["feature_content"])
+
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(3)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+
+        content_layout.addWidget(UIFactory.label("DarwinBox to Sprout Payroll:", style_key="header_label"))
+
+        content_layout.addWidget(
+            UIFactory.label(
+                "This process extracts data from the DarwinBox Payroll Register,"
+                "converts payroll-related headers into \n standardized time categories, and"
+                "consolidates all records at the employee level.\n\n"
+                "The output provides a unified view of each employee's time and "
+                "payroll-related information for \n reporting, analysis, and downstream processing.",
+                font_size=10, color='white'
+            )
+        )
+
+        content_layout.addStretch()
+
+        content_layout.addWidget(UIFactory.label("Required Files:", style_key="header_label"))
+
+        for t in ["DarwinBox Payroll Register"]:
+            content_layout.addWidget(UIFactory.label("• " + t, style_key="standard"))
+
+        content_layout.addWidget(UIFactory.label(
+            """Note:
+            • Headers in Row 1; use Sheet 1.
+            • File type must be .xlsx
+            • Sensitivity should be set to Public
+            • The file should not be password-protected.
+            • If required, use INTOGREAT[YYYY].
+            • No headers should be the same.""",
+            style_key="standard_red",
+            word_wrap=True,
+            align="left"
+        ))
+
+        content_layout.addStretch()
+
+        # Primary upload button
+        self.dbx_to_sprout_upload_btn = UIFactory.button(
+            "Upload",
+            lambda: self._on_dbx_to_sprout_upload_btn_click(),
+            "payroll_button"
+        )
+        content_layout.addWidget(self.dbx_to_sprout_upload_btn)
+
+        open_output_btn = UIFactory.button(
+            "Open Output",
+            lambda: self._emit_clicked("open_dbx_to_sprout_output"),
+            "payroll_button"
+        )
+        content_layout.addWidget(open_output_btn)
+        self._register_aux_button("checker", "open_output_btn", open_output_btn,
+                                  visible_on=["converted_success"])
+
+        # Status labels
+        for key, status in DBX_TO_SPROUT_STATUSES.items():
+            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
+            lbl.hide()
+            content_layout.addWidget(lbl)
+
+        self._layout.addWidget(content)
 
     # ===================================================================
     # FEATURES ON CLICK
@@ -769,6 +862,12 @@ class Body(QWidget):
         self._hide_aux_buttons()
         self._hide_statuses()
         self._emit_clicked(['add_user', email])
+
+    def _on_dbx_to_sprout_upload_btn_click(self):
+        self._set_btn_processing(self.dbx_to_sprout_upload_btn, "Processing...")
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self._emit_clicked("dbx_to_sprout_upload")
 
     # ===================================================================
     # STATUS UI STATE CHANGES
@@ -891,3 +990,74 @@ class Body(QWidget):
             height=880,
             payroll_files=0
         )
+
+    # ===================================================================
+    # ADITIONAL TOOLS UI STATE CHANGES
+    # ===================================================================
+
+    def show_additional_tools_status(self, codes):
+
+        # Remove the conversion progress widgets if they exist
+        for attr in ("conversion_status_label", "conversion_percent_label", "conversion_progress"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                self._layout.removeWidget(widget)
+                widget.deleteLater()
+                setattr(self, attr, None)
+
+        self._show_status(
+            category="checker",
+            codes=codes,
+            statuses=DBX_TO_SPROUT_STATUSES,
+            button_statuses={
+                "converted_success"
+            },
+            upload_btn=self.dbx_to_sprout_upload_btn,
+            height=750,
+            payroll_files=0
+        )
+
+    def show_conversion_progress(self):
+        """
+        Render a progress bar in the additional tools area while the
+        DBX → Sprout conversion runs in the background worker.
+        Called by the Orchestrator immediately after the worker starts.
+        The bar is replaced by show_additional_tools_status() on completion.
+        """
+        self._hide_statuses()
+        self._resize(530, 800)
+
+        self.conversion_status_label = UIFactory.label(
+            "Starting conversion…",
+            style_key="standard",
+            align="center",
+            word_wrap=True,
+        )
+        self._layout.addWidget(self.conversion_status_label)
+
+        self.conversion_percent_label = UIFactory.label(
+            "0%",
+            style_key="header_label",
+            align="center",
+        )
+        self._layout.addWidget(self.conversion_percent_label)
+
+        self.conversion_progress = QProgressBar()
+        self.conversion_progress.setRange(0, 100)
+        self.conversion_progress.setValue(0)
+        self.conversion_progress.setTextVisible(False)
+        self._layout.addWidget(self.conversion_progress)
+
+    def update_conversion_progress(self, percent: int, message: str):
+        """
+        Update the conversion progress bar and labels.
+        Called from Orchestrator via the worker's progress signal.
+
+        Parameters
+        ----------
+        percent : int   0–100
+        message : str   Current stage label
+        """
+        self.conversion_progress.setValue(percent)
+        self.conversion_percent_label.setText(f"{percent}%")
+        self.conversion_status_label.setText(message)

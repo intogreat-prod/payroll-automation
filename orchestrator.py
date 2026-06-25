@@ -49,6 +49,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from features.checker import CheckerFeature
 from features.payroll import PayrollFeature
+from features.additional_tools import DarwinToSproutTool
 from services.config_service import ConfigService
 from services.msal_service import MSALService
 from services.outlook_services import OutlookService
@@ -56,7 +57,7 @@ from services.power_automate_service import PowerAutomateService
 from services.sharepoint_service import SharePointService
 from services.unmand_service import UnmandService
 from ui.main_window import MainWindow
-from ui.statuses import CHECKER_STATUSES, PAYROLL_STATUSES, parse_status_code
+from ui.statuses import CHECKER_STATUSES, PAYROLL_STATUSES, DBX_TO_SPROUT_STATUSES, parse_status_code
 from utils.app_config_user import get
 from utils.email_template import WELCOME_EMAIL
 from utils.error_handler import register_global_handler
@@ -96,7 +97,6 @@ class _ConfigWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-
 class _UpdateCheckWorker(QThread):
     """Checks GitHub Releases for a newer version off the main thread."""
     finished = pyqtSignal(object)   # (latest_tag, asset_id) | None
@@ -106,7 +106,6 @@ class _UpdateCheckWorker(QThread):
 
     def run(self):
         self.finished.emit(get_latest_release())
-
 
 class _SharePointUploadWorker(QThread):
     """Uploads payroll CSV files to SharePoint off the main thread."""
@@ -152,20 +151,16 @@ class _SharePointUploadWorker(QThread):
 
         self.finished.emit(errors)
 
-
 class _ValidationWorker(QThread):
     """Runs the variance report generation off the main thread."""
     finished = pyqtSignal(bool, object)   # success, file_path | error_code
 
-    def __init__(self, files: dict, headers: list, source: str,
-                 var_tolerance, log, checker):
+    def __init__(self, files: dict, headers: list, log, dbx_to_sprout):
         super().__init__()
         self.files         = files
         self.headers       = headers
-        self.source        = source
-        self.var_tolerance = var_tolerance
         self.log           = log
-        self.checker       = checker
+        self.dbx_to_sprout = dbx_to_sprout
 
     def run(self):
         try:
@@ -174,7 +169,6 @@ class _ValidationWorker(QThread):
         except Exception as e:
             self.log.error(f"ValidationWorker: Failed — {e}", error=e)
             self.finished.emit(False, "premium_download_error")
-
 
 class _ArchiveWorker(QThread):
     """Runs sort_and_archive off the main thread on startup."""
@@ -188,7 +182,29 @@ class _ArchiveWorker(QThread):
         self.file_manager.sort_and_archive()
         self.finished.emit()
 
+class _DBXConversionWorker(QThread):
+    """Runs the conversion to sprout off the main thread."""
+    progress = pyqtSignal(int, str)           # percent, message
+    finished = pyqtSignal(bool, object)       # success, file_path | error_code
 
+    def __init__(self, files: dict, header_map: dict, log, dbx_to_sprout):
+        super().__init__()
+        self.files              = files
+        self.header_map         = header_map
+        self.log                = log
+        self.dbx_to_sprout      = dbx_to_sprout
+
+    def run(self):
+        # Wire the tool's progress callback to this thread's signal
+        self.dbx_to_sprout.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
+        try:
+            result = self.dbx_to_sprout.generate(self.files, self.header_map)
+            self.finished.emit(True, result)
+        except Exception as e:
+            self.log.error(f"_DBXConversionWorker: Failed — {e}", error=e)
+            self.finished.emit(False, "premium_download_error")
+        finally:
+            self.dbx_to_sprout.on_progress = None
 
 # ---------------------------------------------------------------------------
 # Orchestrator
@@ -221,6 +237,7 @@ class Orchestrator:
             "folder_name":   None,
             "guid":          None,
             "variance_file": None,
+            "converted_file": None,
             "version":       "v1",
             "id":            now.strftime("%Y%m%d_%H%M%S"),
             "month_year":    now.strftime("%B %Y"),
@@ -272,17 +289,22 @@ class Orchestrator:
         )
 
         # -----------------------------------------------------------
-        # Feature modules
+        # Feature and tool modules
         # -----------------------------------------------------------
         self.log.info("Orchestrator: Initialising feature modules")
-        self.payroll = PayrollFeature(self.log, self.main_window)
-        self.checker = CheckerFeature(self.log, self.main_window)
+        self.payroll       = PayrollFeature(self.log, self.main_window)
+        self.checker       = CheckerFeature(self.log, self.main_window)
+        self.dbx_to_sprout = DarwinToSproutTool(self.log, self.main_window)
 
-        self.payroll.on_result      = self._payroll_files_preparation_result
-        self.payroll.uploaded_files = self._upload_sp_files
+        self.payroll.on_result            = self._payroll_files_preparation_result
+        self.payroll.uploaded_files       = self._upload_sp_files
 
-        self.checker.on_result      = self._checker_files_preparation_result
-        self.checker.uploaded_files = self._generate_validation
+        self.checker.on_result            = self._checker_files_preparation_result
+        self.checker.uploaded_files       = self._generate_validation
+
+        self.dbx_to_sprout.on_result      = self._dbx_payroll_preparation_result
+        self.dbx_to_sprout.uploaded_files = self._convert_payroll
+
         self.log.info("Orchestrator: Feature callbacks wired")
 
         # -----------------------------------------------------------
@@ -364,7 +386,7 @@ class Orchestrator:
         elif btn == "login":
             self._login()
 
-        elif "source" in btn:
+        elif "source" in btn or "tools" in btn:
             self._on_source_selected(btn)
 
         elif "feature" in btn:
@@ -401,6 +423,11 @@ class Orchestrator:
             self.log.info(f"Orchestrator: Opening checker output | path={variance_file}")
             os.startfile(variance_file)
 
+        elif btn == "open_dbx_to_sprout_output":
+            converted_file = self.state["converted_file"]
+            self.log.info(f"Orchestrator: Opening checker output | path={converted_file}")
+            os.startfile(converted_file)
+
         elif btn == "payroll_headers":
             url = self.state["config"]["payroll"]["headers_url"]
             self.log.info(f"Orchestrator: Opening Payroll Headers | url={url}")
@@ -416,6 +443,13 @@ class Orchestrator:
 
         elif btn == "update_error_continue":
             self.body.show_sources()
+
+        elif btn == "dbx_to_sprout_upload":
+            id_names = self.state["config"]["payroll"]["expected_id_names"]
+            self.log.info("Orchestrator: DarwinBox upload triggered")
+            self.dbx_to_sprout.prepare_darwinbox_payroll(id_names)
+            self.body.show_conversion_progress()
+            self._on_conversion_progress(0, "Reading file...")
 
         else:
             self.log.warning(f"Orchestrator: Unhandled button | btn={btn}")
@@ -635,10 +669,15 @@ class Orchestrator:
 
     def _on_source_selected(self, source: str):
         """Store the selected data source and advance to the feature screen."""
-        clean_source = source.replace("_source", "")
-        self.log.event("Source selected", source=clean_source)
-        self.state["source"] = clean_source
-        self.body.show_features()
+        if "source" in source:
+            clean_source = source.replace("_source", "")
+            self.log.event("Source selected", source=clean_source)
+            self.state["source"] = clean_source
+            self.body.show_features()
+        else:
+            self.log.event("Additional Tools Selected")
+            self.body.show_additional_tools()
+
 
     def _on_feature_selected(self, feature: str):
         """
@@ -893,6 +932,86 @@ class Orchestrator:
             status = f"{status}|{id_version}"
 
         self.body.show_payroll_status([status])
+
+    # ===================================================================
+    # ADDITIONAL TOOLS MAIN FLOW
+    # ===================================================================
+
+    def _dbx_payroll_preparation_result(self, codes: list):
+        """Handle result codes emitted by DarwinToSproutTool."""
+        self.log.section("DARWINBOX VALIDATION RESULT")
+        self.log.info(f"Orchestrator: DarwinBox file preparation complete | code_count={len(codes)}")
+
+        for code in codes:
+            file_name, status_code = parse_status_code(code)
+            message_template       = DBX_TO_SPROUT_STATUSES.get(status_code, status_code)
+            message                = message_template.format(file_name=file_name or "")
+            is_error               = "error" in status_code
+
+            self.log.result(
+                step=f"DarwinBox file — {file_name or status_code}",
+                success=not is_error,
+                detail=message,
+            )
+
+        self.body.show_additional_tools_status(codes)
+
+    def _convert_payroll(self, files: dict):
+        """
+        Download payroll headers from SharePoint, then generate the
+        variance report in a background thread.
+        """
+        self.log.section("DARWINBOX TO SPROUT CONVERSION TOOL")
+        self.log.info("Orchestrator: Starting checker conversion tool")
+
+        headers_loc = self.state["config"]["payroll"]["headers_loc"]
+        url         = f"{self._sp_base_url}{headers_loc}"
+
+        self.log.info("Orchestrator: Downloading payroll headers from SharePoint")
+        response = self._sharepoint.get(url)
+
+        if not _ok(response):
+            self.log.warning(f"Orchestrator: Headers download failed | HTTP={response.status_code}")
+            self.body.show_checker_status(["premium_download_error"])
+            return
+
+        source     = "DarwinBox"
+        sheet_name = "Sprout Checker" if source == "Sprout" else "DarwinBox Checker"
+        self.log.info(f"Orchestrator: Reading headers sheet | sheet={sheet_name}")
+
+        df      = pd.read_excel(io.BytesIO(response.content), sheet_name=sheet_name, header=12, engine="openpyxl")
+        header_map = dict(
+                zip(
+                    df["Payroll Headers"],
+                    df["Sprout Payroll Headers"]
+                )
+            )
+        self.log.info(f"Orchestrator: Loaded {len(header_map)} payroll header(s)")
+
+        self.body.show_conversion_progress()
+
+        self._validate_worker = _DBXConversionWorker(
+            files         = files,
+            header_map    = header_map,
+            log           = self.log,
+            dbx_to_sprout = self.dbx_to_sprout,
+        )
+        self._validate_worker.progress.connect(self._on_conversion_progress)
+        self._validate_worker.finished.connect(self._on_conversion_done)
+        self._validate_worker.start()
+
+    def _on_conversion_progress(self, percent: int, message: str):
+        self.body.update_conversion_progress(percent, message)
+
+    def _on_conversion_done(self, success: bool, result):
+        if success:
+            self.state["converted_file"] = result
+            self.log.info(f"Orchestrator: Conversion report written | path={result}")
+            self.body.show_additional_tools_status(["converted_success"])
+        else:
+            self.log.warning(f"Orchestrator: Conversion generation failed | code={result}")
+            self.body.show_additional_tools_status([result])
+
 
     # ===================================================================
     # CHECKER MAIN FLOW

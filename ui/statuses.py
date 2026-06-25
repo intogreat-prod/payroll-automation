@@ -21,6 +21,7 @@ Dictionaries
 PAYROLL_STATUSES  — codes emitted by the Payroll upload + Unmand flow
 CHECKER_STATUSES  — codes emitted by the Checker file-validation flow
 SETTINGS_STATUSES — codes emitted by the Settings (users + deminimis) flow
+DBX_TO_SPROUT_STATUSES — codes emitted by the DarwinBox to Sprout conversion flow
 """
 
 
@@ -163,4 +164,36 @@ SETTINGS_STATUSES = {
                               "Please check the user list above.",
     "error_value":            "Invalid input value. "
                               "Please check your entry and try again.",
+}
+
+
+# ---------------------------------------------------------------------------
+# DARWINBOXTO SPROUT STATUSES
+# Emitted by: features/addtional_tool.py [DarwinToSproutTool], 
+#             orchestrator._generate_conversion
+# ---------------------------------------------------------------------------
+
+DBX_TO_SPROUT_STATUSES = {
+
+    # ── Success ───────────────────────────────────────────────────────
+    "file_success":           "File added successfully.",
+    "converted_success":     "DarwinBox Payroll converted completed successfully.",
+
+    # ── File count / identity errors ──────────────────────────────────
+    "no_file_error":          "No file selected — aborting upload.",
+    "file_exceed_error":      "Number of file exceeds the expected limit "
+                              "of 2. Please verify your upload.",
+    "manual_error":           "Manual Checker file not found.",
+    "unmand_error":           "Unmand Checker file not found.",
+
+    # ── Structural errors ─────────────────────────────────────────────
+    "missing_header_error":   "{file_name} — Missing Row 1 Header.",
+    "missing_total_error":    "{file_name} — Missing Total row in "
+                              "the Employee ID column.",
+    "sensitivity_error":      "File sensitivity or password protection "
+                              "issue detected in {file_name}.",
+
+    # ── Configuration / reference file errors ────────────────────────
+    "premium_download_error": "Payroll Headers and Premium.xlsx download error. "
+                              "Please check the SharePoint location.",
 }

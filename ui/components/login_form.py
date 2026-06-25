@@ -39,9 +39,9 @@ class LoginForm(QWidget):
         layout.setSpacing(8)
 
         # --- Title ---
-        title =  UIFactory.label("Welcome to Intogreat's Payroll Automation!", align="center", font_size=16, font_weight="bold")
+        title =  UIFactory.label("Welcome to Intogreat's Payroll Automation!", align="center", font_size=16, font_weight="bold", color='white')
 
-        subtitle = UIFactory.label("Sign in your account", font_size=9, color='grey')
+        subtitle = UIFactory.label("Sign in your account", font_size=9, color='white')
 
         # --- Device code (hidden until needed) ---
         self._device_code_label = UIFactory.label("", font_size=12, font_weight="bold", selectable=True)

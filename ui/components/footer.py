@@ -38,7 +38,7 @@ class Footer(QWidget):
 
         team_label.setStyleSheet("""
 
-            color: #3A3A3A;
+            color: white;
             font-size: 9px;
             font-weight: 600;
 
@@ -51,7 +51,7 @@ class Footer(QWidget):
 
         version_label.setStyleSheet("""
 
-            color: #6B6B6B;
+            color: white;
             font-size: 11px;
             font-weight: 500;
 
@@ -91,7 +91,7 @@ class Footer(QWidget):
 
                 font-size: 12px;
                 font-weight: bold;
-                color: #555;
+                color: white;
             }
 
             QPushButton:hover {

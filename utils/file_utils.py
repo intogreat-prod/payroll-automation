@@ -50,6 +50,13 @@ def validation_path() -> Path:
     return path
 
 
+def dbx_payroll_path() -> Path:
+    """Returns (and creates) <app_data>/data/validation/"""
+    path = app_data_path() / "data" / "tools" / "DBXtoSprout"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def resource_path(relative_path: str) -> str:
     """
     Resolves an asset path that works in both dev and a PyInstaller bundle.

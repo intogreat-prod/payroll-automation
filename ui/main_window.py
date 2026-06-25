@@ -7,9 +7,9 @@ Builds the fixed chrome (Header, Body, Footer) inside a frosted-glass
 card and exposes resize_to() for screens that need different sizes.
 """
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QGraphicsDropShadowEffect
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QColor
 
 from ui.styles import STYLES
 from ui.components.header import Header
@@ -66,6 +66,14 @@ class MainWindow(QMainWindow):
         card_layout = QVBoxLayout()
         card_layout.setContentsMargins(10, 10, 10, 10)
         self.app_card.setLayout(card_layout)
+        
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(10)
+        shadow.setOffset(0, 0)
+        shadow.setColor(QColor(100, 180, 255 ,160))
+
+        self.app_card.setGraphicsEffect(shadow)
 
         # ---------------------------------------------------------------
         # Fixed components

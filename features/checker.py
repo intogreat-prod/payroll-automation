@@ -87,9 +87,7 @@ class CheckerFeature:
             used for fuzzy matching when normalising the column name.
         """
         self.log.section("CHECKER FILE PREPARATION")
-        self.log.info(
-            "CheckerFeature: Deferring file dialog to next event loop tick"
-        )
+        self.log.info("CheckerFeature: Deferring file dialog to next event loop tick")
         QTimer.singleShot(0, lambda: self._open_and_process(id_names))
 
     # ===================================================================
@@ -192,7 +190,7 @@ class CheckerFeature:
         Read each selected file into a DataFrame, decrypting if needed.
 
         Encrypted files are opened with msoffcrypto using the standard
-        INTOGREAT{YYYY} password.  Files that cannot be read at all are
+        password.  Files that cannot be read at all are
         stored as "sensitivity_error" for the error sweep.
 
         Returns
@@ -356,15 +354,11 @@ class CheckerFeature:
             One or more status-code strings for the UI to display.
         """
         if not self.on_result:
-            self.log.warning(
-                "CheckerFeature: on_result callback not wired — result dropped"
-            )
+            self.log.warning("CheckerFeature: on_result callback not wired — result dropped")
             return
 
         normalized = list(codes) if isinstance(codes, (list, tuple)) else [codes]
-        self.log.info(
-            f"CheckerFeature: Emitting result codes | codes={normalized}"
-        )
+        self.log.info(f"CheckerFeature: Emitting result codes | codes={normalized}")
         self.on_result(normalized)
 
     def _emit_files(self, files: dict):
@@ -377,14 +371,10 @@ class CheckerFeature:
             Validated, ready-to-use checker DataFrames.
         """
         if not self.uploaded_files:
-            self.log.warning(
-                "CheckerFeature: uploaded_files callback not wired — files dropped"
-            )
+            self.log.warning("CheckerFeature: uploaded_files callback not wired — files dropped")
             return
 
-        self.log.info(
-            f"CheckerFeature: Handing {len(files)} file(s) to Orchestrator"
-        )
+        self.log.info(f"CheckerFeature: Handing {len(files)} file(s) to Orchestrator")
         self.uploaded_files(files)
 
     def generate(self, files, headers, source, var_tolerance):
