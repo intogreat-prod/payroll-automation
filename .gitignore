@@ -22,6 +22,9 @@ dist/
 *.iss
 *.exe
 
+# ── PyInstaller ───────────────────────────────────────────────────────────────
+test_files/
+
 # ── App runtime data ───────────────────────────────────────────────────────────
 # These live in ~/Documents/Automations/ but exclude anything accidentally
 # dropped in the project folder

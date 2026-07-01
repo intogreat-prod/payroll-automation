@@ -31,9 +31,14 @@ class MainWindow(QMainWindow):
         self.resize(400, 350)
 
         # ---------------------------------------------------------------
-        # Center window on screen
+        # Position window
         # ---------------------------------------------------------------
-        screen = QApplication.primaryScreen().availableGeometry()
+        screens = QApplication.screens()
+
+        # Use second monitor if available, otherwise primary
+        target_screen = screens[1] if len(screens) > 1 else screens[0]
+
+        screen = target_screen.availableGeometry()
 
         screen_width = screen.width()
         screen_height = screen.height()
@@ -41,8 +46,8 @@ class MainWindow(QMainWindow):
         window_width = self.width()
         window_height = self.height()
 
-        x = (screen_width - window_width) // 2
-        y = int((screen_height - window_height) * 0.1)
+        x = screen.x() + (screen_width - window_width) // 2
+        y = screen.y() + int((screen_height - window_height) * 0.1)
 
         self.move(x, y)
 

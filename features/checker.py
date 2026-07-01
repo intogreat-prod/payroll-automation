@@ -34,7 +34,7 @@ import msoffcrypto
 import pandas as pd
 from dotenv import load_dotenv
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QFileDialog
+from PyQt6.QtWidgets import QFileDialog, QApplication
 
 from utils.app_config_user import get
 from utils.file_utils import validation_path
@@ -65,6 +65,7 @@ class CheckerFeature:
         # Callbacks wired by the Orchestrator after construction
         self.on_result      = None   # fn(codes: list[str])
         self.uploaded_files = None   # fn(files: dict[str, pd.DataFrame])
+        self.on_progress    = None   # fn(percent: int, message: str)
 
         load_dotenv()
 
@@ -111,6 +112,9 @@ class CheckerFeature:
 
         # Parent=None keeps the dialog independent of the main window.
         # Passing the main window as parent caused it to briefly flash.
+
+        self._emit_progress(0, "Selecting files…")
+
         file_paths, _ = QFileDialog.getOpenFileNames(
             self.main_window,
             "Select Checker Excel Files",
@@ -153,19 +157,25 @@ class CheckerFeature:
         On success, emits file_success then delegates to uploaded_files().
         On any failure, emits the error codes via on_result().
         """
+        self._emit_progress(10, "Reading files…")
+        QApplication.processEvents()
         dataframes = self._read_files(file_paths)
 
         # ── Identity check: require both manual and unmand ────────────
+        self._emit_progress(15, "Checking file identity…")
         identity_error = self._check_file_identity(dataframes)
         if identity_error:
             self._emit_result(identity_error)
             return
 
         # ── Structural checks ─────────────────────────────────────────
+        self._emit_progress(20, "Normalising employee IDs…")
         self._normalise_employee_id(dataframes, id_names)
+        self._emit_progress(25, "Checking total rows…")
         self._check_total_row(dataframes)
 
         # ── Final error sweep ─────────────────────────────────────────
+        self._emit_progress(30, "Validaiting")
         self.log.info("CheckerFeature: Final error check across all files")
         error_codes = [
             f"{file}|{status}"
@@ -202,16 +212,23 @@ class CheckerFeature:
         self.log.info(f"CheckerFeature: Reading {len(file_paths)} file(s)")
         dataframes = {}
         year       = datetime.now().year
+        progress = 10
+        increment = progress / len(file_paths)
 
         for file_path in file_paths:
             # Use pathlib for OS-safe name extraction (fixes the "/" split bug)
             filename = Path(file_path).name
+            progress += increment
+
 
             # ── Attempt unencrypted read ──────────────────────────────
             try:
                 df                   = pd.read_excel(file_path, dtype=str)
                 dataframes[filename]  = df
-                self.log.info(f"CheckerFeature: Read OK | file={filename}")
+
+                self._emit_progress(int(progress), f"Read OK | {filename}")
+                QApplication.processEvents()
+                #self.log.info(f"CheckerFeature: Read OK | file={filename}")
                 continue
 
             except Exception:
@@ -230,7 +247,10 @@ class CheckerFeature:
                 decrypted.seek(0)
                 df                   = pd.read_excel(decrypted, dtype=str)
                 dataframes[filename]  = df
-                self.log.info(f"CheckerFeature: Decrypted and read OK | file={filename}")
+
+                self._emit_progress(int(progress), f"Decrypted and read OK | {filename}")
+                QApplication.processEvents()
+                #self.log.info(f"CheckerFeature: Decrypted and read OK | file={filename}")
 
             except Exception as e:
                 self.log.warning(f"CheckerFeature: Failed to read or decrypt |file={filename} error={e}")
@@ -377,6 +397,22 @@ class CheckerFeature:
         self.log.info(f"CheckerFeature: Handing {len(files)} file(s) to Orchestrator")
         self.uploaded_files(files)
 
+    def _emit_progress(self, percent: int, message: str):
+        """
+        Fire the on_progress callback to update the UI progress bar.
+
+        Parameters
+        ----------
+        percent : int
+            Completion percentage (0–100).
+        message : str
+            Short human-readable label for the current stage.
+        """
+        if not self.on_progress:
+            return
+        self.log.info(f"CheckerFeature: Progress | {percent}% — {message}")
+        self.on_progress(percent, message)
+
     def generate(self, files, headers, source, var_tolerance):
         """All pandas variance computation — runs entirely off the main thread."""
         manual_df = None
@@ -404,8 +440,15 @@ class CheckerFeature:
         manual_totals = _get_totals(manual_df)
         unmand_totals = _get_totals(unmand_df)
 
+        progress = 30
+        increment = 65 / len(headers)
+
         output = []
         for h in headers:
+            progress += increment
+            self._emit_progress(int(progress), f"Processing {h} variance")
+            QApplication.processEvents()
+
             m = pd.to_numeric(manual_totals.get(h, 0), errors="coerce")
             u = pd.to_numeric(unmand_totals.get(h, 0), errors="coerce")
             m = 0 if pd.isna(m) else m
@@ -467,10 +510,14 @@ class CheckerFeature:
             "Value": [today, manual_count, unmand_count, f"{accuracy_pct}%", f"± {var_tolerance}"],
         })
 
+        self._emit_progress(97, "Writing Variance Report..")
+        QApplication.processEvents()
         with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
             meta_df.to_excel(writer, sheet_name="Variance Report", index=False, startrow=0)
             output_df.to_excel(writer, sheet_name="Variance Report", index=False, startrow=7)
             if not detailed.empty:
                 detailed.to_excel(writer, sheet_name="Detailed Variance", index=False)
+        self._emit_progress(100, f"Done")
+        
 
         return file_path

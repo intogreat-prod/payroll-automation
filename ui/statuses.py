@@ -22,6 +22,7 @@ PAYROLL_STATUSES  — codes emitted by the Payroll upload + Unmand flow
 CHECKER_STATUSES  — codes emitted by the Checker file-validation flow
 SETTINGS_STATUSES — codes emitted by the Settings (users + deminimis) flow
 DBX_TO_SPROUT_STATUSES — codes emitted by the DarwinBox to Sprout conversion flow
+ATTENDANCE_SUMMARY — codes emitted by the Attendance Summary flow
 """
 
 
@@ -168,8 +169,8 @@ SETTINGS_STATUSES = {
 
 
 # ---------------------------------------------------------------------------
-# DARWINBOXTO SPROUT STATUSES
-# Emitted by: features/addtional_tool.py [DarwinToSproutTool], 
+# DARWINBOX TO SPROUT STATUSES
+# Emitted by: features/dbx_sprout.py [DarwinToSproutTool], 
 #             orchestrator._generate_conversion
 # ---------------------------------------------------------------------------
 
@@ -177,14 +178,45 @@ DBX_TO_SPROUT_STATUSES = {
 
     # ── Success ───────────────────────────────────────────────────────
     "file_success":           "File added successfully.",
-    "converted_success":     "DarwinBox Payroll converted completed successfully.",
+    "converted_success":      "DarwinBox Payroll converted completed successfully.",
 
     # ── File count / identity errors ──────────────────────────────────
     "no_file_error":          "No file selected — aborting upload.",
     "file_exceed_error":      "Number of file exceeds the expected limit "
-                              "of 2. Please verify your upload.",
-    "manual_error":           "Manual Checker file not found.",
-    "unmand_error":           "Unmand Checker file not found.",
+                              "of 1. Please verify your upload.",
+
+    # ── Structural errors ─────────────────────────────────────────────
+    "missing_header_error":   "{file_name} — Missing Row 1 Header.",
+    "missing_total_error":    "{file_name} — Missing Total row in "
+                              "the Employee ID column.",
+    "sensitivity_error":      "File sensitivity or password protection "
+                              "issue detected in {file_name}.",
+
+    # ── Configuration / reference file errors ────────────────────────
+    "premium_download_error": "Payroll Headers and Premium.xlsx download error. "
+                              "Please check the SharePoint location.",
+}
+
+# ---------------------------------------------------------------------------
+# ATTENDANCE SUMMARY
+# Emitted by: features/attendance_summary.py [AttendanceSummaryTool], 
+#             orchestrator._generate_summary
+# ---------------------------------------------------------------------------
+
+ATTENDANCE_SUMMARY = {
+
+    # ── Success ───────────────────────────────────────────────────────
+    "file_success":           "File added successfully.",
+    "summary_success":        "DarwinBox Payroll summarized successfully.",
+
+    # ── File count / identity errors ──────────────────────────────────
+    "no_file_error":          "No file selected — aborting upload.",
+    "file_exceed_error":      "Number of file exceeds the expected limit "
+                              "of . Please verify your upload.",
+
+    # ── Date Inputs Errors ──────────────────────────────────────────────
+    "date_same_error":         "Start Date and Cut-off Date cannot be the same.",
+    "date_range_error":        "The Cut-off Date cannot be earlier than the Start Date.",
 
     # ── Structural errors ─────────────────────────────────────────────
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",

@@ -49,7 +49,8 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from features.checker import CheckerFeature
 from features.payroll import PayrollFeature
-from features.additional_tools import DarwinToSproutTool
+from features.dbx_to_sprout import DarwinToSproutTool
+from features.attendance_summary import AttendanceSummaryTool
 from services.config_service import ConfigService
 from services.msal_service import MSALService
 from services.outlook_services import OutlookService
@@ -57,7 +58,7 @@ from services.power_automate_service import PowerAutomateService
 from services.sharepoint_service import SharePointService
 from services.unmand_service import UnmandService
 from ui.main_window import MainWindow
-from ui.statuses import CHECKER_STATUSES, PAYROLL_STATUSES, DBX_TO_SPROUT_STATUSES, parse_status_code
+from ui.statuses import *
 from utils.app_config_user import get
 from utils.email_template import WELCOME_EMAIL
 from utils.error_handler import register_global_handler
@@ -109,30 +110,32 @@ class _UpdateCheckWorker(QThread):
 
 class _SharePointUploadWorker(QThread):
     """Uploads payroll CSV files to SharePoint off the main thread."""
-    progress = pyqtSignal(str)          # current file name
+    progress = pyqtSignal(int, str)     # current file name and progress
     finished = pyqtSignal(list)         # list of failed logical names (empty = all OK)
 
     def __init__(self, files: dict, sharepoint: SharePointService,
-                 base_url: str, folder: str, run_id: str, version: str, log):
+                 base_url: str, run_id: str, version: str, log):
         super().__init__()
         self.files      = files
         self.sharepoint = sharepoint
         self.base_url   = base_url
-        self.folder     = folder
         self.run_id     = run_id
         self.version    = version
         self.log        = log
 
     def run(self):
         errors   = []
-        base_url = f"{self.base_url}root:/{self.folder}"
+        progress = 0
+        increment = 100 / len(self.files)
 
         for logical_name, df in self.files.items():
-            file_name = f"{logical_name}_{self.run_id}_{self.version}.csv"
-            url       = f"{base_url}/{file_name}:/content"
+            progress += increment
 
-            self.progress.emit(file_name)
-            self.log.info(f"SPUploadWorker: Uploading | name={file_name}")
+            file_name = f"{logical_name}_{self.run_id}_{self.version}.csv"
+            url       = f"{self.base_url}/{file_name}:/content"
+
+            self.progress.emit(int(progress),file_name)
+            self.log.info(f"SPUploadWorker: Uploading | name={file_name} | {url}")
 
             csv_buffer = io.StringIO()
             df.to_csv(csv_buffer, index=False)
@@ -153,22 +156,30 @@ class _SharePointUploadWorker(QThread):
 
 class _ValidationWorker(QThread):
     """Runs the variance report generation off the main thread."""
-    finished = pyqtSignal(bool, object)   # success, file_path | error_code
+    progress = pyqtSignal(int, str)           # percent, message
+    finished = pyqtSignal(bool, object)       # success, file_path | error_code
 
-    def __init__(self, files: dict, headers: list, log, dbx_to_sprout):
+    def __init__(self, files: dict, headers: list, source: str, var_tolerance,
+                 log, checker):
         super().__init__()
         self.files         = files
         self.headers       = headers
+        self.source        = source
+        self.var_tolerance = var_tolerance
         self.log           = log
-        self.dbx_to_sprout = dbx_to_sprout
+        self.checker       = checker
 
     def run(self):
+        # Wire the checker's progress callback to this thread's signal
+        self.checker.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
         try:
             result = self.checker.generate(self.files, self.headers, self.source, self.var_tolerance)
             self.finished.emit(True, result)
         except Exception as e:
             self.log.error(f"ValidationWorker: Failed — {e}", error=e)
             self.finished.emit(False, "premium_download_error")
+        finally:
+            self.checker.on_progress = None
 
 class _ArchiveWorker(QThread):
     """Runs sort_and_archive off the main thread on startup."""
@@ -206,6 +217,30 @@ class _DBXConversionWorker(QThread):
         finally:
             self.dbx_to_sprout.on_progress = None
 
+class _AttendanceSummaryWorker(QThread):
+    """Runs attendance summary processing off the main thread."""
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(bool, object)
+
+    def __init__(self, files: dict, start_date: str, cutoff_date: str, log, att_summary):
+        super().__init__()
+        self.files       = files
+        self.start_date  = start_date
+        self.cutoff_date = cutoff_date
+        self.log         = log
+        self.att_summary = att_summary
+
+    def run(self):
+        self.att_summary.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
+        try:
+            result = self.att_summary.generate(self.files, self.start_date, self.cutoff_date)
+            self.finished.emit(True, result)
+        except Exception as e:
+            self.log.error(f"_AttendanceSummaryWorker: Failed — {e}", error=e)
+            self.finished.emit(False, "processing_error")
+        finally:
+            self.att_summary.on_progress = None
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -229,6 +264,8 @@ class Orchestrator:
             "latest":        None,
             "source":        None,
             "feature":       None,
+            "menu":          None,
+            "tool":          None,
             "logged_in":     False,
             "email":         None,
             "name":          None,
@@ -292,18 +329,25 @@ class Orchestrator:
         # Feature and tool modules
         # -----------------------------------------------------------
         self.log.info("Orchestrator: Initialising feature modules")
-        self.payroll       = PayrollFeature(self.log, self.main_window)
-        self.checker       = CheckerFeature(self.log, self.main_window)
-        self.dbx_to_sprout = DarwinToSproutTool(self.log, self.main_window)
+        self.payroll         = PayrollFeature(self.log, self.main_window)
+        self.checker         = CheckerFeature(self.log, self.main_window)
+        self.dbx_to_sprout   = DarwinToSproutTool(self.log, self.main_window)
+        self.att_summary_svc = AttendanceSummaryTool(self.log, self.main_window)
 
-        self.payroll.on_result            = self._payroll_files_preparation_result
-        self.payroll.uploaded_files       = self._upload_sp_files
+        self.payroll.on_result              = self._payroll_files_preparation_result
+        self.payroll.uploaded_files         = self._upload_sp_files
+        self.payroll.on_progress            = lambda pct, msg: self.body.update_processing_progress(pct, msg)
 
-        self.checker.on_result            = self._checker_files_preparation_result
-        self.checker.uploaded_files       = self._generate_validation
+        self.checker.on_result              = self._checker_files_preparation_result
+        self.checker.uploaded_files         = self._generate_validation
+        self.checker.on_progress            = lambda pct, msg: self.body.update_processing_progress(pct, msg)
 
-        self.dbx_to_sprout.on_result      = self._dbx_payroll_preparation_result
-        self.dbx_to_sprout.uploaded_files = self._convert_payroll
+        self.dbx_to_sprout.on_result        = self._dbx_payroll_preparation_result
+        self.dbx_to_sprout.uploaded_files   = self._convert_payroll
+        self.dbx_to_sprout.on_progress      = lambda pct, msg: self.body.update_processing_progress(pct, msg)
+
+        self.att_summary_svc.on_result      = self._att_summary_preparation_result
+        self.att_summary_svc.uploaded_files = self._run_attendance_summary
 
         self.log.info("Orchestrator: Feature callbacks wired")
 
@@ -386,11 +430,20 @@ class Orchestrator:
         elif btn == "login":
             self._login()
 
-        elif "source" in btn or "tools" in btn:
+        elif "menu" in btn:
+            self._on_menu_selected(btn)
+
+        elif "source" in btn:
             self._on_source_selected(btn)
+
+        elif "tool" in btn:
+            self._on_tool_selected(btn)
 
         elif "feature" in btn:
             self._on_feature_selected(btn)
+
+        elif btn == "home":
+            self.body.show_main_menu()
 
         elif btn == "send_unmand":
             self.log.info("Orchestrator: Send to Unmand triggered")
@@ -416,6 +469,7 @@ class Orchestrator:
         elif btn == "checker_upload":
             id_names = self.state["config"]["payroll"]["expected_id_names"]
             self.log.info("Orchestrator: Checker upload triggered")
+            self.body.show_processing_progress("Opening local folder...", "checker")
             self.checker.prepare_checker_files(id_names)
 
         elif btn == "open_checker_output":
@@ -425,8 +479,14 @@ class Orchestrator:
 
         elif btn == "open_dbx_to_sprout_output":
             converted_file = self.state["converted_file"]
-            self.log.info(f"Orchestrator: Opening checker output | path={converted_file}")
+            self.log.info(f"Orchestrator: Opening DBX to Sprout output | path={converted_file}")
             os.startfile(converted_file)
+
+        elif btn == "open_att_summary_output":
+            att_summary_file = self.state.get("att_summary_file")
+            self.log.info(f"Orchestrator: Opening attendance summary output | path={att_summary_file}")
+            if att_summary_file:
+                os.startfile(att_summary_file)
 
         elif btn == "payroll_headers":
             url = self.state["config"]["payroll"]["headers_url"]
@@ -439,17 +499,29 @@ class Orchestrator:
             webbrowser.open(url)
 
         elif btn == "update_skipped":
-            self.body.show_sources()
+            self.body.show_main_menu()
 
         elif btn == "update_error_continue":
-            self.body.show_sources()
+            self.body.show_main_menu()
 
         elif btn == "dbx_to_sprout_upload":
             id_names = self.state["config"]["payroll"]["expected_id_names"]
-            self.log.info("Orchestrator: DarwinBox upload triggered")
+            self.log.info("Orchestrator: DarwinBox Payroll Register upload triggered")
+            self.body.show_processing_progress("Opening local folder...", "dbx_to_sprout")
+            #self._on_processing_progress(0, "Selecting file…")
             self.dbx_to_sprout.prepare_darwinbox_payroll(id_names)
-            self.body.show_conversion_progress()
-            self._on_conversion_progress(0, "Reading file...")
+
+        elif btn == "att_summary_upload":
+            self.log.info("Orchestrator: DarwinBox Attendance Report upload triggered")
+            # Store date picker values before opening file dialog
+            self.state["att_start_date"]  = self.body.start_date.date().toString("yyyy-MM-dd")
+            self.state["att_cutoff_date"] = self.body.cutoff.date().toString("yyyy-MM-dd")
+            self.att_summary_svc.prepare_attendance_file(
+                self.state["att_start_date"],
+                self.state["att_cutoff_date"],
+            )
+            self.body.show_processing_progress("Opening local folder...", "att_summary")
+            self._on_processing_progress(0, "Selecting file…")
 
         else:
             self.log.warning(f"Orchestrator: Unhandled button | btn={btn}")
@@ -622,14 +694,14 @@ class Orchestrator:
     def _on_update_checked(self, latest):
         if not latest:
             self.log.info("Orchestrator: Update check failed or no releases found — skipping")
-            self.body.show_sources()
+            self.body.show_main_menu()
             return
 
         self.state["latest"], asset_id = latest
 
         if not is_newer(self.state["latest"], self.state["current"]):
             self.log.info(f"Orchestrator: Already up to date | version={self.state['current']}")
-            self.body.show_sources()
+            self.body.show_main_menu()
             return
 
         self.log.info(
@@ -666,18 +738,35 @@ class Orchestrator:
     # ===================================================================
     # NAVIGATION
     # ===================================================================
+    
+    def _on_menu_selected(self, menu: str):
+        """Store the selected data menu and advance to their screen."""
+
+        clean_menu = menu.replace("_menu", "")
+        self.state["menu"] = clean_menu
+
+        users          = self.state["config"]["users"]
+        deminimis      = self.state["config"]["deminimis"]
+
+        self.log.event("Orchestrator:  Menu selected", menu=clean_menu)
+
+        if "automation" == clean_menu:
+            self.body.show_sources()
+        elif "tools" == clean_menu:
+            self.body.show_tools()
+        elif "settings" == clean_menu:
+            self.body.show_settings(users, deminimis)
 
     def _on_source_selected(self, source: str):
         """Store the selected data source and advance to the feature screen."""
         if "source" in source:
             clean_source = source.replace("_source", "")
-            self.log.event("Source selected", source=clean_source)
+            self.log.event("Orchestrator:  Source selected", source=clean_source)
             self.state["source"] = clean_source
-            self.body.show_features()
-        else:
-            self.log.event("Additional Tools Selected")
-            self.body.show_additional_tools()
-
+            if "DarwinBox" in source:
+                self.body.show_darwin_features()
+            else:
+                self.body.show_sprout_features()
 
     def _on_feature_selected(self, feature: str):
         """
@@ -695,19 +784,26 @@ class Orchestrator:
         deminimis      = self.state["config"]["deminimis"]
 
         if feature == "payroll_feature":
-            self.log.info(f"Orchestrator: Loading payroll feature | required_files={len(required_files)}")
-            self.body.show_payroll_feature(required_files)
+            self.log.info(f"Orchestrator: Payroll Selected | required_files={len(required_files)}")
+            self.body.show_payroll_feature(required_files, self.state["source"])
 
         elif feature == "checker_feature":
-            self.log.info("Orchestrator: Loading checker feature")
-            self.body.show_checker_feature()
+            self.log.info("Orchestrator: Checker Selected")
+            self.body.show_checker_feature(self.state["source"])
 
-        elif feature == "settings_feature":
-            self.log.info(
-                f"Orchestrator: Loading settings feature | "
-                f"users={len(users)} deminimis={len(deminimis)}"
-            )
-            self.body.show_settings_feature(users, deminimis)
+    def _on_tool_selected(self, tool: str):
+        """
+        Navigate to the selected tool screen.
+        """
+        clean_tool = tool.replace("_tool", "")
+        self.state["tool"] = clean_tool
+        self.log.event("Orchestrator: Tool selected | required_files=1", tool=clean_tool,)
+
+        if clean_tool == "dbx_to_sprout":
+            self.body.show_dbx_to_sprout_tool()
+        elif clean_tool == "attendance_summary":
+            self.body.show_attendance_summary_tool()
+
 
     # ===================================================================
     # PAYROLL MAIN FLOW
@@ -749,6 +845,7 @@ class Orchestrator:
             f"Orchestrator: Starting file preparation | "
             f"source={source} expected_files={len(expected_files)}"
         )
+        self.body.show_processing_progress("Opening local folder...", "payroll")
         self.payroll.prepare_payroll_files(expected_files, payroll_cfg, source, token)
 
     def _payroll_files_preparation_result(self, codes: list):
@@ -844,17 +941,20 @@ class Orchestrator:
         self._upload_worker = _SharePointUploadWorker(
             files       = files,
             sharepoint  = self._sharepoint,
-            base_url    = self._sp_base_url,
-            folder      = self._env_url(self.state["config"]["payroll"]["folder"]) + self.state["folder_name"],
+            base_url    = base_url,
             run_id      = self.state["id"],
             version     = self.state["version"],
             log         = self.log,
         )
         self._upload_worker.progress.connect(
-            lambda fname: self.log.info(f"Orchestrator: Uploading {fname}...")
+            lambda prog, fname: _upload_progress(prog, fname)
         )
         self._upload_worker.finished.connect(self._on_upload_finished)
         self._upload_worker.start()
+
+        def _upload_progress(progress, file_name):
+            self.log.info(f"Orchestrator: Uploading {file_name}...")
+            self.body.update_processing_progress(progress, f"Uploading {file_name} to Unmand")
 
     def _on_upload_finished(self, errors: list):
         if errors:
@@ -954,7 +1054,7 @@ class Orchestrator:
                 detail=message,
             )
 
-        self.body.show_additional_tools_status(codes)
+        self.body.show_dbx_to_sprout_status(codes)
 
     def _convert_payroll(self, files: dict):
         """
@@ -988,7 +1088,7 @@ class Orchestrator:
             )
         self.log.info(f"Orchestrator: Loaded {len(header_map)} payroll header(s)")
 
-        self.body.show_conversion_progress()
+        self.body.show_processing_progress("Converting payroll file…", "dbx_to_sprout")
 
         self._validate_worker = _DBXConversionWorker(
             files         = files,
@@ -996,21 +1096,18 @@ class Orchestrator:
             log           = self.log,
             dbx_to_sprout = self.dbx_to_sprout,
         )
-        self._validate_worker.progress.connect(self._on_conversion_progress)
+        self._validate_worker.progress.connect(self._on_processing_progress)
         self._validate_worker.finished.connect(self._on_conversion_done)
         self._validate_worker.start()
-
-    def _on_conversion_progress(self, percent: int, message: str):
-        self.body.update_conversion_progress(percent, message)
 
     def _on_conversion_done(self, success: bool, result):
         if success:
             self.state["converted_file"] = result
             self.log.info(f"Orchestrator: Conversion report written | path={result}")
-            self.body.show_additional_tools_status(["converted_success"])
+            self.body.show_dbx_to_sprout_status(["converted_success"])
         else:
             self.log.warning(f"Orchestrator: Conversion generation failed | code={result}")
-            self.body.show_additional_tools_status([result])
+            self.body.show_dbx_to_sprout_status([result])
 
 
     # ===================================================================
@@ -1067,6 +1164,8 @@ class Orchestrator:
 
         var_tolerance = self.state["config"].get("var_tolerance", 0)
 
+        self.body.show_processing_progress("Running checker validation…", "checker")
+
         self._validate_worker = _ValidationWorker(
             files         = files,
             headers       = headers,
@@ -1075,6 +1174,7 @@ class Orchestrator:
             log           = self.log,
             checker       = self.checker
         )
+        self._validate_worker.progress.connect(self._on_processing_progress)
         self._validate_worker.finished.connect(self._on_validation_done)
         self._validate_worker.start()
 
@@ -1086,6 +1186,57 @@ class Orchestrator:
         else:
             self.log.warning(f"Orchestrator: Variance generation failed | code={result}")
             self.body.show_checker_status([result])
+
+    # ===================================================================
+    # ATTENDANCE SUMMARY MAIN FLOW
+    # ===================================================================
+
+    def _att_summary_preparation_result(self, codes: list):
+        """Handle result codes emitted by AttendanceSummaryTool."""
+        self.log.section("ATTENDANCE SUMMARY VALIDATION RESULT")
+        self.log.info(f"Orchestrator: Attendance file preparation complete | code_count={len(codes)}")
+
+        for code in codes:
+            file_name, status_code = parse_status_code(code)
+            message_template       = ATTENDANCE_SUMMARY.get(status_code, status_code)
+            message                = message_template.format(file_name=file_name or "")
+            is_error               = "error" in status_code
+            self.log.result(
+                step=f"Attendance file — {file_name or status_code}",
+                success=not is_error,
+                detail=message,
+            )
+        self.body.show_attendance_summary_status(codes)
+
+    def _run_attendance_summary(self, files: dict):
+        """Process the attendance file in a background thread."""
+        self.log.section("ATTENDANCE SUMMARY PROCESSING")
+        self.log.info("Orchestrator: Starting attendance summary generation")
+
+        start_date  = self.state.get("att_start_date", "")
+        cutoff_date = self.state.get("att_cutoff_date", "")
+
+        self.body.show_processing_progress("Generating attendance summary…", "att_summary")
+
+        self._att_summary_worker = _AttendanceSummaryWorker(
+            files       = files,
+            start_date  = start_date,
+            cutoff_date = cutoff_date,
+            log         = self.log,
+            att_summary = self.att_summary_svc,
+        )
+        self._att_summary_worker.progress.connect(self._on_processing_progress)
+        self._att_summary_worker.finished.connect(self._on_att_summary_done)
+        self._att_summary_worker.start()
+
+    def _on_att_summary_done(self, success: bool, result):
+        if success:
+            self.state["att_summary_file"] = result
+            self.log.info(f"Orchestrator: Attendance summary written | path={result}")
+            self.body.show_attendance_summary_status(["summarized_success"])
+        else:
+            self.log.warning(f"Orchestrator: Attendance summary failed | code={result}")
+            self.body.show_attendance_summary_status([result])
 
     # ===================================================================
     # SETTINGS MAIN FLOW
@@ -1128,6 +1279,7 @@ class Orchestrator:
         if not success:
             self.body.show_settings_save_deminimis_status(["deminimis_save_error"])
             return
+        self.body.show_settings_save_deminimis_status(["deminimis_save_success"])
 
         # Reload config silently (no update check) then refresh settings screen
         self._reload_config_silent()
@@ -1218,6 +1370,7 @@ class Orchestrator:
         self._config_svc.update(self.state["config"], self.state["token"])
 
         self.log.info(f"Orchestrator: User added successfully | email={email}")
+        self.body.show_settings_add_user_status(["add_user_success"])
         self._reload_config_silent()
 
     # ===================================================================
@@ -1248,3 +1401,9 @@ class Orchestrator:
             return
 
         self._on_feature_selected("settings_feature")
+
+    # ===================================================================
+    # THREAD (PROGESS UPDATE)
+    # ===================================================================
+    def _on_processing_progress(self, percent: int, message: str):
+        self.body.update_processing_progress(percent, message)

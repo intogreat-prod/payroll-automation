@@ -7,13 +7,69 @@ behaviour stay consistent across screens. No business logic here.
 
 from PyQt6.QtWidgets import (
     QPushButton, QLabel, QLineEdit,
-    QFrame, QWidget, QVBoxLayout, QHBoxLayout,
+    QFrame, QWidget, QVBoxLayout, QHBoxLayout, 
+    QCalendarWidget, QDialog
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, QDate, pyqtSignal, QSize
+from PyQt6.QtGui import QPixmap, QIcon
 
 from ui.styles import STYLES
 from utils.file_utils import resource_path
+
+
+class _DatePickerEdit(QLineEdit):
+    """Read-only line edit that pops a frameless calendar on click."""
+    date_changed = pyqtSignal(QDate)
+
+    def __init__(self, fmt: str, style:str, parent=None):
+        super().__init__(parent)
+        self._fmt = fmt
+        self.style = style
+        self._date = QDate.currentDate()
+        self.setReadOnly(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._refresh()
+
+    def date(self) -> QDate:
+        return self._date
+    
+    def set_date(self, date: QDate):
+        self._date = date
+        self._refresh()
+
+    def mousePressEvent(self, _):
+        self._open()
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._open()
+        else:
+            super().keyPressEvent(e)
+
+    def _open(self):
+        dlg = QDialog(self, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        cal = QCalendarWidget(dlg)
+        cal.setSelectedDate(self._date)
+        cal.setGridVisible(False)
+        cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+        cal.setStyleSheet(self.style)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(cal)
+        dlg.setLayout(layout)
+
+        def pick(date: QDate):
+            self._date = date
+            self._refresh()
+            self.date_changed.emit(date)
+            dlg.accept()
+        cal.activated.connect(pick)
+        dlg.move(self.mapToGlobal(self.rect().bottomLeft()))
+        dlg.exec()
+
+    def _refresh(self):
+        self.setText(self._date.toString(self._fmt))
 
 
 class UIFactory:
@@ -23,7 +79,8 @@ class UIFactory:
 
     @staticmethod
     def button(text: str, callback, style_key: str = "button",
-               width: int = None, height: int = None) -> QPushButton:
+               width: int = None, height: int = None,
+               icon: tuple[str, int, int] | None = None) -> QPushButton:
         """Standard clickable button."""
         btn = QPushButton(text)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -34,6 +91,10 @@ class UIFactory:
             btn.setFixedWidth(width)
         if height:
             btn.setFixedHeight(height)
+        if icon:
+            path, w, h = icon
+            btn.setIcon(QIcon(resource_path(path)))
+            btn.setIconSize(QSize(w, h))
 
         return btn
 
@@ -80,6 +141,10 @@ class UIFactory:
         color: str = "black",
         font_weight: str = "normal",
         italic: bool = False,
+        padding_top: int = 0,
+        padding_bottom: int = 0,
+        padding_right: int = 0,
+        padding_left: int = 0,
         underline: bool = False,
         background: str = "transparent",
         border: str = "none",
@@ -110,6 +175,10 @@ class UIFactory:
             f"font-weight: {font_weight};",
             f"background: {background};",
             f"border: {border};",
+            f"padding-top: {padding_top};",
+            f"padding-bottom: {padding_bottom};",
+            f"padding-right: {padding_right};",
+            f"padding-left: {padding_left};",
         ]
         if italic:
             styles.append("font-style: italic;")
@@ -187,46 +256,93 @@ class UIFactory:
 
     # -------------------------------------------------------------------------
     # BUTTON ROW
-
     @staticmethod
     def button_row(buttons: list[tuple], width: int = None, height: int = None,
-                   spacing: int = 10, margin: tuple = (10, 10, 10, 10), parent: QWidget = None) -> tuple[QWidget, QHBoxLayout]:
+                    spacing: int = 10, margin: tuple = (10, 10, 10, 10),
+                    parent: QWidget = None, use_container: bool = True,
+                    con_style_key: str = "") -> tuple[QWidget | None, QHBoxLayout]:
         """
         Horizontal row of buttons.
         Each entry in buttons is (text, callback) or (text, callback, style_key).
-        Returns (container, layout) in case you need to add more items later.
+        Returns (container, layout) — container is None if use_container=False.
         """
-        container = QWidget(parent)
-        layout    = QHBoxLayout(container)
+        if use_container:
+            container = QWidget(parent)
+            layout    = QHBoxLayout(container)
+            container.setStyleSheet(con_style_key)
+
+        else:
+            container = None
+            layout    = QHBoxLayout()
+
         layout.setContentsMargins(*margin)
         layout.setSpacing(spacing)
 
         for item in buttons:
             text, callback = item[0], item[1]
             style_key      = item[2] if len(item) > 2 else "button"
-            layout.addWidget(UIFactory.button(text, callback, style_key, width=width, height=height))
+            icon = item[3] if len(item) > 3 else None
+            layout.addWidget(UIFactory.button(text, callback, style_key, width=width, height=height, icon=icon))
 
         return container, layout
 
     # -------------------------------------------------------------------------
     # BUTTON COLUMN
-
     @staticmethod
     def button_column(buttons: list[tuple], width: int = None, height: int = None,
-                      spacing: int = 10, margin: tuple = (10, 10, 10, 10), parent: QWidget = None) -> tuple[QWidget, QVBoxLayout]:
+                        spacing: int = 10, margin: tuple = (10, 10, 10, 10),
+                        parent: QWidget = None, use_container: bool = True, 
+                        con_style_key: str = "") -> tuple[QWidget | None, QVBoxLayout]:
         """
         Vertical stack of buttons.
         Each entry in buttons is (text, callback) or (text, callback, style_key).
-        Returns (container, layout) in case you need to add more items later.
+        Returns (container, layout) — container is None if use_container=False.
         """
-        container = QWidget(parent)
-        layout    = QVBoxLayout(container)
+        if use_container:
+            container = QWidget(parent)
+            layout    = QVBoxLayout(container)
+
+            container.setStyleSheet(con_style_key)
+        else:
+            container = None
+            layout    = QVBoxLayout()
+
         layout.setContentsMargins(*margin)
         layout.setSpacing(spacing)
 
         for item in buttons:
             text, callback = item[0], item[1]
             style_key      = item[2] if len(item) > 2 else "button"
-            layout.addWidget(UIFactory.button(text, callback, style_key, width=width, height=height))
+            icon = item[3] if len(item) > 3 else None
+            layout.addWidget(UIFactory.button(text, callback, style_key, width=width, height=height, icon=icon))
 
         return container, layout
+
+
+    
+    # -------------------------------------------------------------------------
+    # DATE PICKER
+    @staticmethod
+    def date_picker(
+        format: str = "MMM d, yyyy",
+        default_date: QDate = None,
+        style_key: str = "payroll_input",
+        width: int = None,
+        height: int = None,
+        callback=None,
+    ) -> _DatePickerEdit:
+        """
+        Read-only field that pops a calendar on click.
+        Connects date_changed signal to callback if provided.
+        """
+        picker = _DatePickerEdit(fmt=format, style=STYLES['calendar_dark'])
+        picker.setStyleSheet(STYLES.get(style_key, ""))
+        if default_date:
+            picker.set_date(default_date)
+        if width:
+            picker.setFixedWidth(width)
+        if height:
+            picker.setFixedHeight(height)
+        if callback:
+            picker.date_changed.connect(callback)
+        return picker

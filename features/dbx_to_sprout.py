@@ -40,8 +40,7 @@ from dotenv import load_dotenv
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QFileDialog
-
+from PyQt6.QtWidgets import QFileDialog, QApplication
 from utils.app_config_user import get
 from utils.file_utils import dbx_payroll_path
 
@@ -136,6 +135,8 @@ class DarwinToSproutTool:
             Employee ID column name variants for fuzzy matching.
         """
         self.log.info("DarwinToSproutTool: Opening file dialog")
+        self._emit_progress(0, "Selecting file...")
+
 
         # Parent=None keeps the dialog independent of the main window.
         # Passing the main window as parent caused it to briefly flash.
@@ -203,6 +204,7 @@ class DarwinToSproutTool:
             self._emit_result(f"{filename}|{df}")
             return
 
+        self._emit_progress(8, "Normalising employee ids...")
         df = self._normalise_employee_id(df, filename, id_names)
 
         if not isinstance(df, pd.DataFrame):
@@ -245,6 +247,9 @@ class DarwinToSproutTool:
         """
         filename = Path(file_path).name
         year     = datetime.now().year
+
+        self._emit_progress(5, f"Reading {filename}")
+        QApplication.processEvents()
 
         self.log.info(f"DarwinToSproutTool: Reading file | file={filename}")
 
@@ -427,16 +432,16 @@ class DarwinToSproutTool:
             f"file={filename} rows={len(raw_df)} cols={len(raw_df.columns)}"
         )
 
-        self._emit_progress(20, "Reading complete — converting values…")
+        self._emit_progress(10, "Reading complete — converting values…")
         converted_df = self._convert_values(raw_df.copy(), header_map, filename)
 
-        self._emit_progress(35, "Formatting columns…")
+        self._emit_progress(20, "Formatting columns…")
         formatted_df = self._format_payroll(converted_df, header_map, filename)
 
-        self._emit_progress(55, "Building employee list…")
+        self._emit_progress(30, "Building employee list…")
         final_df     = self._build_employee_list(formatted_df, filename)
 
-        self._emit_progress(65, "Writing workbook…")
+        self._emit_progress(45, "Writing workbook…")
 
         sheets = {
             "Raw":       raw_df,
@@ -717,10 +722,10 @@ class DarwinToSproutTool:
 
         # Pre-compute per-sheet progress checkpoints (65–94 %)
         _sheet_progress = {
-            "Raw":       70,
-            "Converted": 78,
-            "Formatted": 86,
-            "Final":     94,
+            "Raw":       55,
+            "Converted": 65,
+            "Formatted": 75,
+            "Final":     85,
         }
 
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:

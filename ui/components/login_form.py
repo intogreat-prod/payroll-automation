@@ -44,7 +44,7 @@ class LoginForm(QWidget):
         subtitle = UIFactory.label("Sign in your account", font_size=9, color='white')
 
         # --- Device code (hidden until needed) ---
-        self._device_code_label = UIFactory.label("", font_size=12, font_weight="bold", selectable=True)
+        self._device_code_label = UIFactory.label("", font_size=12, font_weight="bold", selectable=True, color="white")
         self._device_code_label.hide()
 
         # --- Login button ---

@@ -38,7 +38,7 @@ import msoffcrypto
 import pandas as pd
 from dotenv import load_dotenv
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QFileDialog
+from PyQt6.QtWidgets import QFileDialog, QApplication
 
 from services.sharepoint_service import SharePointService
 from ui.statuses import parse_status_code
@@ -70,9 +70,7 @@ class PayrollFeature:
         # Callbacks wired by the Orchestrator after construction
         self.on_result      = None   # fn(codes: list[str])
         self.uploaded_files = None   # fn(files: dict[str, pd.DataFrame])
-
-    # ===================================================================
-    # PUBLIC ENTRY POINT
+        self.on_progress    = None   # fn(percent: int, message: str)
     # ===================================================================
 
     def prepare_payroll_files( self,files: list, payroll_metadata: dict, source: str, token: str,):
@@ -96,6 +94,7 @@ class PayrollFeature:
 
         # ── Download payroll headers reference ────────────────────────
         headers = self._download_headers(payroll_metadata, source)
+        self._emit_progress(2, "Payroll headers fetched")
         if headers is None:
             # Error already emitted inside _download_headers
             return
@@ -172,6 +171,9 @@ class PayrollFeature:
 
         # Parent=None keeps the dialog independent of the main window.
         # Passing the main window as parent caused it to briefly flash.
+
+        self._emit_progress(2, "Selecting files…")
+
         file_paths, _ = QFileDialog.getOpenFileNames(
             self.main_window,
             "Select Payroll Excel Files",
@@ -192,7 +194,7 @@ class PayrollFeature:
             self.log.warning(f"PayrollFeature: Too many files | got={len(file_paths)} max={len(files)}")
             self._emit_result("file_exceed_error")
             return
-
+        
         self.log.info("PayrollFeature: File count validated — starting processing")
         self._process_files(file_paths, files, payroll_metadata, payroll_headers)
 
@@ -217,20 +219,29 @@ class PayrollFeature:
         On success, delegates to uploaded_files().
         On any failure, emits the error codes via on_result().
         """
+        self._emit_progress(10, "Reading files…")
+        QApplication.processEvents()
         dataframes = self._read_files(file_paths)
 
+        self._emit_progress(25, "Validating attendance dates…")
         self._validate_attendance_dates(dataframes)
+        self._emit_progress(35, "Checking for new headers…")
         new_headers = self._detect_new_headers(dataframes, payroll_headers, payroll_metadata)
         if new_headers:
             # New headers were found and uploaded — stop here
             return
 
+        self._emit_progress(45, "Normalising employee IDs…")
         self._normalise_employee_id(dataframes, payroll_metadata["expected_id_names"])
+        self._emit_progress(55, "Checking required files…")
         self._check_required_files(dataframes, required_files)
+        self._emit_progress(65, "Checking total rows…")
         self._check_total_row(dataframes)
+        self._emit_progress(75, "Aggregating deductions…")
         self._aggregate_deductions(dataframes)
 
         # ── Final error sweep ─────────────────────────────────────────
+        self._emit_progress(80, "Sending files to Unmand...")
         self.log.info("PayrollFeature: Final error check across all files")
         error_codes = [
             f"{file}|{status}"
@@ -266,16 +277,22 @@ class PayrollFeature:
         self.log.info(f"PayrollFeature: Reading {len(file_paths)} file(s)")
         dataframes = {}
         year       = datetime.now().year
+        progress = 10
+        increment = progress / len(file_paths)
 
         for file_path in file_paths:
             # Use pathlib for OS-safe name extraction (fixes the "/" split bug)
             filename = Path(file_path).name
+            progress += increment
 
             # ── Attempt unencrypted read ──────────────────────────────
             try:
                 df                  = pd.read_excel(file_path, dtype=str)
                 dataframes[filename] = df
-                self.log.info(f"PayrollFeature: Read OK | file={filename}")
+
+                self._emit_progress(int(progress), f"Read OK | {filename}")
+                QApplication.processEvents()
+                #self.log.info(f"PayrollFeature: Read OK | file={filename}")
                 continue
 
             except Exception:
@@ -294,7 +311,10 @@ class PayrollFeature:
                 decrypted.seek(0)
                 df                   = pd.read_excel(decrypted, dtype=str)
                 dataframes[filename]  = df
-                self.log.info(f"PayrollFeature: Decrypted and read OK | file={filename}")
+                
+                self._emit_progress(int(progress), f"Decrypted and read OK | {filename}")
+                QApplication.processEvents()
+                #self.log.info(f"PayrollFeature: Decrypted and read OK | file={filename}")
 
             except Exception as e:
                 self.log.warning(f"PayrollFeature: Failed to read or decrypt | file={filename} error={e}")
@@ -521,3 +541,19 @@ class PayrollFeature:
 
         self.log.info(f"PayrollFeature: Handing {len(files)} file(s) to Orchestrator")
         self.uploaded_files(files)
+
+    def _emit_progress(self, percent: int, message: str):
+        """
+        Fire the on_progress callback to update the UI progress bar.
+
+        Parameters
+        ----------
+        percent : int
+            Completion percentage (0–100).
+        message : str
+            Short human-readable label for the current stage.
+        """
+        if not self.on_progress:
+            return
+        self.log.info(f"PayrollFeature: Progress | {percent}% — {message}")
+        self.on_progress(percent, message)

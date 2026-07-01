@@ -73,7 +73,7 @@ class Footer(QWidget):
         """)
 
         # CREDIT ICON BUTTON
-        credit_btn = QPushButton("ⓘ")
+        credit_btn = QPushButton("𝒊")
 
         credit_btn.setFixedSize(22, 22)
 

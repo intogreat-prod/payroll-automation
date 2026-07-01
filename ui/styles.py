@@ -63,7 +63,7 @@ _PAYROLL_BTN = """
 STYLES = {
    # --- Buttons ---
    "button":          _DARK_BTN.format(radius=18, padding=12),
-   "settings_button": _DARK_BTN.format(radius=15, padding=8),
+   "settings_button": _PAYROLL_BTN.format(radius=15, padding=8),
    "gradient_button": _PAYROLL_BTN.format(radius=15, padding=8),
    "payroll_button":  _PAYROLL_BTN.format(radius=18, padding=12),
    # --- Input ---
@@ -105,12 +105,19 @@ STYLES = {
        }
    """,
    "feature_content": """
-       #featureContent {
-           background: rgba(255, 255, 255, 0.05);
-           border: 1px solid rgba(255, 255, 255, 0.1);
-           border-radius: 20px;
-       }
-   """,
+        #featureContent {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+        }
+    """,
+   "standard_container": """
+            QFrame {
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 15px;
+                background-color: transparent;
+            }
+        """,
    # --- Status Labels ---
    "transparent_bg": """
        QLabel {
@@ -149,7 +156,7 @@ STYLES = {
    """,
    "standard": """
        QLabel {
-           font-size: 14px;
+           font-size: 12px;
            color: rgba(200, 200, 200, 1);
            padding: 4px;
            background: transparent;
@@ -158,7 +165,7 @@ STYLES = {
    """,
    "standard_red": """
        QLabel {
-           font-size: 13px;
+           font-size: 12px;
            color: rgba(255, 90, 90, 1);
            padding: 4px;
            background: transparent;
@@ -167,14 +174,40 @@ STYLES = {
    """,
    # --- Input Styles ---
    "payroll_input": """
-       QLineEdit {
-           font-size: 14px;
-           color: rgba(220, 220, 220, 1);
-           background: transparent;
-           border: none;
-           padding-left: 8px;
-       }
-   """,
+        QLineEdit {
+            border: 1px solid #c5cee8;
+            border-radius: 12px;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+        }
+        QLineEdit:hover {
+            border-color: qlineargradient(
+           x1:0, y1:0, x2:1, y2:1,
+           stop:0   rgba(30, 100, 45, 0.75),
+           stop:0.4 rgba(40, 130, 180, 0.75),
+           stop:1   rgba(80, 80, 120, 0.65)
+       );
+        }
+        """,
+
+   "date_picker": """
+        QLineEdit {
+            border: 1px solid #c5cee8;
+            border-radius: 12px;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+        }
+        QLineEdit:hover {
+            border-color: qlineargradient(
+           x1:0, y1:0, x2:1, y2:1,
+           stop:0   rgba(30, 100, 45, 0.75),
+           stop:0.4 rgba(40, 130, 180, 0.75),
+           stop:1   rgba(80, 80, 120, 0.65)
+       );
+        }
+        """,
    # --- Scroll ---
    "settings_scroll": """
        QScrollBar:vertical {
@@ -219,4 +252,38 @@ STYLES = {
            font-size: 16px;
        }
    """,
+
+   "calendar_dark":"""
+            QCalendarWidget {
+                border: 1px solid white;
+                border-radius: 12px;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #344052; 
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
+                padding: 4px;
+            }
+            QCalendarWidget QToolButton {
+                color: #DADCE0; 
+                background: transparent;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QCalendarWidget QToolButton:hover {
+                background-color: #768291;
+                border-radius: 4px;
+            }
+            QCalendarWidget QAbstractItemView {
+                background-color: #27364C;
+                color: #768291;
+                selection-background-color: yellow;
+                selection-color: #DADCE0;
+                border-bottom-left-radius: 12px;
+                border-bottom-right-radius: 12px;
+            }
+            QCalendarWidget QAbstractItemView:disabled {
+                color: rgba(44, 44, 62, 0.3);
+            }
+        """
 }
