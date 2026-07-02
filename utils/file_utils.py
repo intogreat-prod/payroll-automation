@@ -56,6 +56,12 @@ def dbx_payroll_path() -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+def att_summary_path() -> Path:
+    """Returns (and creates) <app_data>/data/validation/"""
+    path = app_data_path() / "data" / "tools" / "Attendance Summary"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
 
 def resource_path(relative_path: str) -> str:
     """
