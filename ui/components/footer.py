@@ -8,14 +8,18 @@ from PyQt6.QtWidgets import (
 )
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon
 
 from utils.app_config_user import get, is_env
+from utils.file_utils import resource_path
 
 
 class Footer(QWidget):
 
     def __init__(self, version=None, env=None):
         super().__init__()
+
+        self.on_clicked = None
 
         # resolve at runtime (safe + flexible)
         self.version = version or get("VERSION", "0.0.0")
@@ -34,7 +38,7 @@ class Footer(QWidget):
         layout.setContentsMargins(15, 5, 15, 5)
 
         # LEFT: TEAM
-        team_label = QLabel("Intogreat Philippines Solutions Inc. - Automation Team")
+        team_label = QLabel("Intogreat Solutions, Inc.")
 
         team_label.setStyleSheet("""
 
@@ -73,41 +77,38 @@ class Footer(QWidget):
         """)
 
         # CREDIT ICON BUTTON
-        credit_btn = QPushButton("𝒊")
+        white_icon = QIcon(resource_path("assets/background_white.png"))
+        black_icon = QIcon(resource_path("assets/background.png"))
 
+        credit_btn = QPushButton("")
+        credit_btn.setIcon(white_icon)
         credit_btn.setFixedSize(22, 22)
-
         credit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        credit_btn.setToolTip("Open Intogreat's website")
-
+        credit_btn.setToolTip("Credits")
+        credit_btn.clicked.connect(lambda: self.on_clicked('credits'))
         credit_btn.setStyleSheet("""
-
-            QPushButton {
-
-                border: none;
-                background: rgba(255, 255, 255, 80);
-                border-radius: 11px;
-
-                font-size: 12px;
-                font-weight: bold;
-                color: white;
-            }
-
-            QPushButton:hover {
-
-                background: rgba(255, 255, 255, 140);
-                color: #000;
-            }
-
+        QPushButton {
+            background: transparent;
+            border: none;
+        }
         """)
 
-        credit_btn.clicked.connect(self.show_credits)
+
+        def enter_event(event):
+            credit_btn.setIcon(black_icon)
+            QPushButton.enterEvent(credit_btn, event)
+
+
+        def leave_event(event):
+            credit_btn.setIcon(white_icon)
+            QPushButton.leaveEvent(credit_btn, event)
+
+
+        credit_btn.enterEvent = enter_event
+        credit_btn.leaveEvent = leave_event
 
         # BUILD RIGHT SIDE
         right_layout.addWidget(env_label)
-
-        
 
         right_widget = QWidget()
         right_widget.setLayout(right_layout)
@@ -129,9 +130,6 @@ class Footer(QWidget):
 
         """)
 
-    def show_credits(self):
-        webbrowser.open("https://intogreatsolutions.com/")
-
     def _get_env_color(self, env):
 
         env = env.lower()
@@ -147,3 +145,4 @@ class Footer(QWidget):
 
         else:
             return "#6B6B6B"
+        

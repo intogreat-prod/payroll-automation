@@ -207,7 +207,8 @@ ATTENDANCE_SUMMARY = {
 
     # ── Success ───────────────────────────────────────────────────────
     "file_success":           "File added successfully.",
-    "summary_success":        "DarwinBox Payroll summarized successfully.",
+    "summarized_success":      "DarwinBox attendance report summarized successfully.",
+
 
     # ── File count / identity errors ──────────────────────────────────
     "no_file_error":          "No file selected — aborting upload.",
@@ -217,11 +218,11 @@ ATTENDANCE_SUMMARY = {
     # ── Date Inputs Errors ──────────────────────────────────────────────
     "date_same_error":         "Start Date and Cut-off Date cannot be the same.",
     "date_range_error":        "The Cut-off Date cannot be earlier than the Start Date.",
+    "date_range_error":        "Date format error. Please contact support.",
 
     # ── Structural errors ─────────────────────────────────────────────
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",
-    "missing_total_error":    "{file_name} — Missing Total row in "
-                              "the Employee ID column.",
+    "missing_columns_error":  "Missing {file_name} column.",
     "sensitivity_error":      "File sensitivity or password protection "
                               "issue detected in {file_name}.",
 

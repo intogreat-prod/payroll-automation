@@ -277,7 +277,7 @@ class Orchestrator:
             "converted_file": None,
             "version":       "v1",
             "id":            now.strftime("%Y%m%d_%H%M%S"),
-            "month_year":    now.strftime("%B %Y"),
+            "month_year":    now.strftime("%B %Y")
         }
         self.log.info(
             f"Orchestrator: State initialised | "
@@ -301,6 +301,7 @@ class Orchestrator:
         # Wire UI callbacks → Orchestrator handlers
         self.header.on_clicked = self._handle_header_clicks
         self.body.on_clicked   = self._handle_body_clicks
+        self.footer.on_clicked   = self._handle_footer_clicks
         self.log.info("Orchestrator: UI callbacks wired")
 
         self.main_window.show()   # ← window appears immediately
@@ -348,6 +349,7 @@ class Orchestrator:
 
         self.att_summary_svc.on_result      = self._att_summary_preparation_result
         self.att_summary_svc.uploaded_files = self._run_attendance_summary
+        self.att_summary_svc.on_progress    = lambda pct, msg: self.body.update_processing_progress(pct, msg)
 
         self.log.info("Orchestrator: Feature callbacks wired")
 
@@ -444,6 +446,12 @@ class Orchestrator:
 
         elif btn == "home":
             self.body.show_main_menu()
+        
+        elif btn == "open_website":
+            webbrowser.open("https://intogreatsolutions.com/automation-services/")
+        
+        elif btn == "close_credits":
+            self.start()
 
         elif btn == "send_unmand":
             self.log.info("Orchestrator: Send to Unmand triggered")
@@ -521,7 +529,6 @@ class Orchestrator:
                 self.state["att_cutoff_date"],
             )
             self.body.show_processing_progress("Opening local folder...", "att_summary")
-            self._on_processing_progress(0, "Selecting file…")
 
         else:
             self.log.warning(f"Orchestrator: Unhandled button | btn={btn}")
@@ -545,6 +552,13 @@ class Orchestrator:
             self.log.info(f"Orchestrator: Restart triggered - Loc:{executable}")
             subprocess.Popen([str(executable)])
             os._exit(0)
+
+    def _handle_footer_clicks(self, btn):
+        if btn == "credits":
+            try:
+                self.body.show_credits(datetime.now().year, self.footer.version)
+            except:
+                webbrowser.open("https://intogreatsolutions.com/automation-services/")
 
     # ===================================================================
     # ENTRY POINT
@@ -1217,6 +1231,8 @@ class Orchestrator:
         cutoff_date = self.state.get("att_cutoff_date", "")
 
         self.body.show_processing_progress("Generating attendance summary…", "att_summary")
+
+        #self.att_summary_svc.generate(files, start_date, cutoff_date)
 
         self._att_summary_worker = _AttendanceSummaryWorker(
             files       = files,

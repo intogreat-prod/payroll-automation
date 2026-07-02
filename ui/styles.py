@@ -58,14 +58,46 @@ _PAYROLL_BTN = """
    }}
 """
 # ---------------------------------------------------------------------------
+# REUSABLE TEMPLATE: gradeint/accent payroll button (format with radius= and padding=)
+# ---------------------------------------------------------------------------
+_PAYROLL_BTN_GRDNT = """
+   QPushButton {{
+       border-radius: {radius}px;
+       background-color: qlineargradient(
+           x1:0, y1:0, x2:1, y2:1,
+           stop:0   rgba(30, 100, 45, 0.75),
+           stop:0.4 rgba(40, 130, 180, 0.75),
+           stop:1   rgba(80, 80, 120, 0.65)
+       );
+       padding: {padding}px;
+       border: 1px solid rgba(255, 255, 255, 0.2);
+       color: rgba(220, 220, 220, 1);
+       font-weight: bold;
+   }}
+   QPushButton:hover {{
+       background-color: rgba(255, 255, 255, 0.08);
+       color: white;
+       border: 1px solid rgba(255, 255, 255, 0.35);
+   }}
+   QPushButton:pressed {{
+       background: qlineargradient(
+           x1:0, y1:0, x2:1, y2:1,
+           stop:0 rgba(60, 150, 200, 0.85),
+           stop:1 rgba(25, 90, 40, 0.85)
+       );
+       color: white;
+   }}
+"""
+# ---------------------------------------------------------------------------
 # EXPORTED STYLES DICT
 # ---------------------------------------------------------------------------
 STYLES = {
    # --- Buttons ---
-   "button":          _DARK_BTN.format(radius=18, padding=12),
-   "settings_button": _PAYROLL_BTN.format(radius=15, padding=8),
-   "gradient_button": _PAYROLL_BTN.format(radius=15, padding=8),
-   "payroll_button":  _PAYROLL_BTN.format(radius=18, padding=12),
+   "button":                _DARK_BTN.format(radius=18, padding=12),
+   "settings_button":       _PAYROLL_BTN.format(radius=15, padding=8),
+   "gradient_button":       _PAYROLL_BTN.format(radius=15, padding=8),
+   "payroll_button":        _PAYROLL_BTN.format(radius=15, padding=8),
+   "credits_web_button":    _PAYROLL_BTN_GRDNT.format(radius=15, padding=8),
    # --- Input ---
    "input": """
        QLineEdit {
@@ -118,6 +150,20 @@ STYLES = {
                 background-color: transparent;
             }
         """,
+    "credits_card": """
+        QFrame {
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+        }
+    """,
+    "credits_footer": """
+        QFrame {
+            background-color: rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+        }
+    """,
+
    # --- Status Labels ---
    "transparent_bg": """
        QLabel {
@@ -252,7 +298,7 @@ STYLES = {
            font-size: 16px;
        }
    """,
-
+    # --- Calendar ---
    "calendar_dark":"""
             QCalendarWidget {
                 border: 1px solid white;
@@ -285,5 +331,8 @@ STYLES = {
             QCalendarWidget QAbstractItemView:disabled {
                 color: rgba(44, 44, 62, 0.3);
             }
-        """
+        """,
+        # --- Divider ---
+        "standard_divider":
+            "background-color: rgba(255,255,255,0.08); max-height:1px; border:none;"
 }

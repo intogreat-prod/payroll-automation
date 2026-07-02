@@ -27,7 +27,7 @@ from ui.ui_factory import UIFactory
 from ui.components.login_form import LoginForm
 from utils.file_utils import resource_path
 
-import time
+ACCENT = "#4FD1C5"  # teal, pulled from the intogreat logo mark
 
 class Body(QWidget):
 
@@ -69,9 +69,9 @@ class Body(QWidget):
         self.height = {
             "payroll": 820,
             "checker": 770,
-            "settings": 910,
+            "settings": 920,
             "dbx_to_sprout": 730,
-            "att_summary": 850
+            "att_summary": 830
         }
 
     # ===================================================================
@@ -224,6 +224,125 @@ class Body(QWidget):
         self._layout.addWidget(toggle_btn)
         self._layout.addWidget(tb_box)
         self._layout.addStretch()
+
+    def show_credits(self, year, app_version):
+        self._clear()
+        self._resize(530, 900)
+        self._layout.setContentsMargins(32, 24, 32, 24)
+        self._layout.setSpacing(0)
+
+        # -------------------------
+        # Header
+        # -------------------------
+        # NOTE: the "intogreat / PAYROLL AUTOMATION" wordmark already lives in
+        # your persistent header, so we don't repeat "Payroll Automation" here.
+        # Just version + a short description.
+        version = UIFactory.label(
+            f"Version {app_version}",
+            font_size=11,
+            color="#8F96A3",
+            align="center"
+        )
+        description = UIFactory.label(
+            "Payroll Automation streamlines payroll processing by validating attendance, "
+            "applying payroll rules, identifying discrepancies, and generating accurate, "
+            "review-ready outputs for Finance and HR.",
+            font_size=11,
+            color="#BEBEBE",
+            align="center",
+            word_wrap=True
+        )
+        # -------------------------
+        # Team card (grouped, bordered)
+        # -------------------------
+        team_card = QFrame()
+        team_card.setObjectName("credits_card")
+        team_layout = QVBoxLayout(team_card)
+        team_layout.setContentsMargins(20, 20, 20, 20)
+        team_layout.setSpacing(14)
+        company = UIFactory.label(
+            f"<b style='color:{ACCENT};'>Developed by</b><br>"
+            "Intogreat Philippines Solutions Inc.<br>"
+            "Automation Team",
+            font_size=12, color="#F5F5F5", align="center", richtext=True
+        )
+        developer = UIFactory.label(
+            "<b>Lead Developer</b><br>"
+            "Roi Edzel Lagliva",
+            font_size=12, color="#F5F5F5", align="center", richtext=True
+        )
+        contributors = UIFactory.label(
+            "<b>Contributors</b><br>"
+            "Finance Team &bull; HR Team &bull; Automation Team",
+            font_size=12, color="#F5F5F5", align="center", richtext=True
+        )
+        team_layout.addWidget(company)
+        team_layout.addWidget(UIFactory.divider())
+        team_layout.addWidget(developer)
+        team_layout.addWidget(UIFactory.divider())
+        team_layout.addWidget(contributors)
+        # -------------------------
+        # Built with
+        # -------------------------
+        technologies = UIFactory.label(
+            "<b>Built With</b><br>"
+            "Python &bull; PyQt6 &bull; Pandas &bull; OpenPyXL<br>"
+            "Microsoft Graph API &bull; SharePoint &bull; Unmand",
+            font_size=12, color="#E6E6E6", align="center", richtext=True
+        )
+        # -------------------------
+        # Footer: legal notice + copyright, visually demoted
+        # -------------------------
+        footer_card = QFrame()
+        footer_card.setObjectName("credits_footer")
+        footer_layout = QVBoxLayout(footer_card)
+        footer_layout.setContentsMargins(16, 12, 16, 12)
+        footer_layout.setSpacing(6)
+        notice = UIFactory.label(
+            "<b>Confidentiality Notice</b><br>"
+            "This software is proprietary and confidential to Intogreat Philippines "
+            "Solutions Inc. Unauthorized reproduction, distribution, modification, "
+            "reverse engineering, disclosure, or use without prior written "
+            "authorization is strictly prohibited.",
+            font_size=10, color="#8F96A3", align="center", word_wrap=True, richtext=True
+        )
+        copyright = UIFactory.label(
+            f"© {year} Intogreat Philippines Solutions Inc. All rights reserved.",
+            font_size=10, color="#6B7280", align="center", richtext=True
+        )
+        footer_layout.addWidget(notice)
+        footer_layout.addWidget(copyright)
+        # -------------------------
+        # Buttons: one primary (accent-filled), one secondary (ghost)
+        # -------------------------
+        website_btn = UIFactory.button(
+            "Visit Website",
+            lambda: self._emit_clicked("open_website"),
+            "credits_web_button"
+        )
+        close_btn = UIFactory.button(
+            "Close",
+            lambda: self._emit_clicked("close_credits"),
+            "payroll_button"
+        )
+        # -------------------------
+        # Layout
+        # -------------------------
+        self._layout.addStretch(1)
+        self._layout.addWidget(version)
+        self._layout.addSpacing(12)
+        self._layout.addWidget(description)
+        self._layout.addSpacing(24)
+        self._layout.addWidget(team_card)
+        self._layout.addSpacing(20)
+        self._layout.addWidget(technologies)
+        self._layout.addSpacing(24)
+        self._layout.addWidget(footer_card)
+        self._layout.addSpacing(20)
+        self._layout.addWidget(website_btn)
+        self._layout.addSpacing(8)
+        self._layout.addWidget(close_btn)
+        self._layout.addStretch(2)
 
     # ===================================================================
     # SCREEN 1 — NO INTERNET
@@ -484,7 +603,7 @@ class Body(QWidget):
     def show_sources(self):
         self._clear()
         #self.setStyleSheet(STYLES["body_clear"])
-        self._resize(350, 450)
+        self._resize(350, 425)
 
         sources_layout = QVBoxLayout()
         sources_layout.setSpacing(4)
@@ -513,7 +632,7 @@ class Body(QWidget):
     def show_darwin_features(self):
         self._clear()
         #self.setStyleSheet(STYLES["body_clear"])
-        self._resize(350, 475)
+        self._resize(350, 450)
 
         darwin_feat_layout = QVBoxLayout()
         darwin_feat_layout.setSpacing(4)
@@ -554,7 +673,7 @@ class Body(QWidget):
 
     def show_sprout_features(self):
         self._clear()
-        self._resize(350, 480)
+        self._resize(350, 455)
 
         sprout_feat_layout = QVBoxLayout()
         sprout_feat_layout.setSpacing(4)
@@ -1574,7 +1693,7 @@ class Body(QWidget):
             Short label shown above the progress bar (e.g. "Converting…").
         """
         self._hide_statuses()
-        self._resize(530, self.height[key] + 100)
+        self._resize(530, self.height[key] + 80)
 
         self.processing_status_label = UIFactory.label(
             title,

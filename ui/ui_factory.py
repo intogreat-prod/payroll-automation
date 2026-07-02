@@ -152,6 +152,7 @@ class UIFactory:
         height: int | None = None,
         selectable: bool = False,
         link: bool = False,
+        richtext: bool = False
     ) -> QLabel:
         """
         Flexible QLabel builder. style_key applies a preset from STYLES;
@@ -201,6 +202,9 @@ class UIFactory:
             lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
             lbl.setOpenExternalLinks(True)
 
+        if richtext:
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+
         return lbl
 
     # -------------------------------------------------------------------------
@@ -223,12 +227,15 @@ class UIFactory:
     # DIVIDER
 
     @staticmethod
-    def divider() -> QFrame:
+    def divider(style_key:str = "standard_divider", shape= QFrame.Shape.HLine, shadow=None) -> QFrame:
         """Horizontal rule separator."""
         line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("color: rgba(0, 0, 0, 0.15);")
+        if shape:
+            line.setFrameShape(shape)
+        if shadow:
+            line.setFrameShadow(shadow)
+        if style_key:
+            line.setStyleSheet(style_key)
         return line
 
     # -------------------------------------------------------------------------
