@@ -301,18 +301,17 @@ STYLES = {
     # --- Calendar ---
    "calendar_dark":"""
             QCalendarWidget {
-                border: 1px solid white;
                 border-radius: 12px;
             }
-            QCalendarWidget QWidget#qt_calendar_navigationbar {
+            QCalendarWidget QWidget {
                 background-color: #344052; 
                 border-top-left-radius: 12px;
                 border-top-right-radius: 12px;
-                padding: 4px;
+                padding: 6px;
             }
             QCalendarWidget QToolButton {
                 color: #DADCE0; 
-                background: transparent;
+                background: #344052;
                 font-weight: bold;
                 font-size: 13px;
             }
@@ -321,12 +320,14 @@ STYLES = {
                 border-radius: 4px;
             }
             QCalendarWidget QAbstractItemView {
+                padding: 0px;
                 background-color: #27364C;
-                color: #768291;
-                selection-background-color: yellow;
-                selection-color: #DADCE0;
+                selection-background-color: white;
+                selection-color: white;
                 border-bottom-left-radius: 12px;
                 border-bottom-right-radius: 12px;
+                border: none;
+                outline: 0px;
             }
             QCalendarWidget QAbstractItemView:disabled {
                 color: rgba(44, 44, 62, 0.3);
@@ -334,5 +335,26 @@ STYLES = {
         """,
         # --- Divider ---
         "standard_divider":
-            "background-color: rgba(255,255,255,0.08); max-height:1px; border:none;"
+            "background-color: rgba(255,255,255,0.08); max-height:1px; border:none;",
+
+        "progress_bar":
+        """
+            QProgressBar {
+                border: none;
+                background-color: #344052;
+                border-radius: 1px;
+            }
+
+            QProgressBar::chunk {
+            background-color: qlineargradient(
+                x1:0, y1:0,
+                x2:1, y2:0,
+                stop:0 #389043,
+                stop:0.5 #6ecef5,
+                stop:1 #000000
+            );
+            border-radius: 1px;
+            }
+            """
+        
 }

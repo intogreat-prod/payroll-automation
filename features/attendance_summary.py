@@ -729,7 +729,7 @@ class AttendanceSummaryTool:
         """
         return float(int(total_seconds // 60))
 
-    def _compute_late_by_unmand(self, row: pd.Series) -> float:
+    def _compute_late_by_unmand(self, row: pd.Series) -> tuple[float, str]:
         """
         Derive the Late By_Unmand value for a single row.
 
@@ -754,7 +754,7 @@ class AttendanceSummaryTool:
         total_seconds = self._hhmmss_to_total_seconds(raw)
 
         if total_seconds is None:
-            return 0.00
+            return 0.00, ""
 
         policy = str(row.get("Policy", "")).strip()
 
@@ -763,7 +763,7 @@ class AttendanceSummaryTool:
             fwd_raw = row.get("Final Work Duration", "")
             fwd_sec = self._hhmmss_to_total_seconds(fwd_raw)
             if fwd_sec is not None and fwd_sec >= 9 * 3600:
-                return 0.00
+                return 0.00, ""
             # else fall through to standard rounding
 
         # ── Policy: Flexible Shift with Grace Period (No NSD) ─────────
@@ -782,14 +782,17 @@ class AttendanceSummaryTool:
                 expected_sec  = self._hhmmss_to_total_seconds(expected_str)
                 if clock_in_sec is not None and expected_sec is not None:
                     if clock_in_sec <= expected_sec:
-                        return 0.00
+                        return 0.00, ""
             # If shift not recognised or comparison fails, fall through
 
-        # ── Standard rounding ─────────────────────────────────────────
-        if total_seconds >= 2 * 3600:   # 2 hr or beyond → 0.00
-            return 0.00
+        # Order matters — check the stricter threshold first
+        if total_seconds >= 4 * 3600:
+            return 0.00, "Unpaid Leave"
 
-        return self._seconds_to_floored_minutes(total_seconds)
+        if total_seconds >= 2 * 3600:
+            return 0.00, "Present,Half Day Unpaid Leave"
+
+        return self._seconds_to_floored_minutes(total_seconds), ""
 
     def _compute_early_clockout(self, row: pd.Series) -> tuple[float, str]:
         """
@@ -816,7 +819,7 @@ class AttendanceSummaryTool:
             return 0.00, "Unpaid Leave"
 
         if total_seconds >= 2 * 3600:
-            return 0.00, "Present, Half Day Unpaid Leave"
+            return 0.00, "Present,Half Day Unpaid Leave"
 
         return self._seconds_to_floored_minutes(total_seconds), ""
 
@@ -844,12 +847,18 @@ class AttendanceSummaryTool:
         status_unmand = []
 
         for _, row in df.iterrows():
-            late_val = self._compute_late_by_unmand(row)
-            early_val, status_val = self._compute_early_clockout(row)
+            late_val, late_status_val = self._compute_late_by_unmand(row)
+            early_val, early_status_val = self._compute_early_clockout(row)
 
             late_unmand.append(late_val)
             early_unmand.append(early_val)
-            status_unmand.append(status_val)
+
+            if late_status_val:
+                status_unmand.append(late_status_val)
+            elif early_status_val:
+                status_unmand.append(early_status_val)
+            else:
+                status_unmand.append("")
 
         # Add the new columns
         df["Late By_Unmand"] = late_unmand

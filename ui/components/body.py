@@ -419,7 +419,7 @@ class Body(QWidget):
         on_confirm is a lambda from the Orchestrator that triggers the download.
         """
         self._clear()
-        self._resize(400, 550)
+        self._resize(400, 530)
         self._layout.setContentsMargins(10, 10, 10, 10)
         self._layout.setSpacing(10)
         self._layout.addWidget(UIFactory.label(
@@ -453,7 +453,7 @@ class Body(QWidget):
                 self._set_btn_processing(self.update_btn, "Downloading..."),
                 on_confirm()
             ),
-            "payroll_button"
+            "credits_web_button"
         )
         self._layout.addWidget(self.update_btn)
         # Skip — proceeds to the normal sources screen
@@ -1713,6 +1713,8 @@ class Body(QWidget):
         self.processing_progress = QProgressBar()
         self.processing_progress.setRange(0, 100)
         self.processing_progress.setValue(0)
+        self.processing_progress.setFixedHeight(3)
+        self.processing_progress.setStyleSheet(STYLES["progress_bar"])
         self.processing_progress.setTextVisible(False)
         self._layout.addWidget(self.processing_progress)
 

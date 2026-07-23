@@ -226,7 +226,6 @@ ATTENDANCE_SUMMARY = {
     "sensitivity_error":      "File sensitivity or password protection "
                               "issue detected in {file_name}.",
 
-    # ── Configuration / reference file errors ────────────────────────
-    "premium_download_error": "Payroll Headers and Premium.xlsx download error. "
-                              "Please check the SharePoint location.",
+    # ── Processing Error ────────────────────────
+    "processing_error": "The tool ecountered an error. Please contact support.",
 }
