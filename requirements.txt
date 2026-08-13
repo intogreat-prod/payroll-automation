@@ -1,28 +1,37 @@
-# Payroll Automation — Python dependencies
-# Install with: pip install -r requirements.txt
-# Requires Python 3.11+
-
-# UI
-PyQt6==6.7.1
-
-# Microsoft authentication
+backports.tarfile==1.2.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.4.9
+colorama==0.4.6
+cryptography==45.0.7
+et_xmlfile==2.0.0
+idna==3.18
+importlib_metadata==9.0.0
+jaraco.classes==3.4.0
+jaraco.context==6.1.2
+jaraco.functools==4.6.0
+keyring==25.3.0
+more-itertools==11.1.0
 msal==1.31.0
 msal-extensions==1.2.0
-
-# Microsoft Graph / SharePoint / HTTP
-requests==2.32.3
-
-# Excel file handling
-pandas==2.2.3
-openpyxl==3.1.5
 msoffcrypto-tool==5.4.2
-
-# Environment variables
+numpy==2.4.6
+olefile==0.47
+openpyxl==3.1.5
+pandas==2.2.3
+portalocker==2.10.1
+pycparser==3.0
+PyJWT==2.13.0
+PyQt6==6.7.1
+PyQt6-Qt6==6.7.3
+PyQt6_sip==13.12.0
+python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
-
-# Console colour output (logger)
-colorama==0.4.6
-
-# Installation
-keyring==25.3.0
-
+pytz==2026.3.post1
+pywin32==312
+pywin32-ctypes==0.2.3
+requests==2.32.3
+six==1.17.0
+tzdata==2026.3
+urllib3==2.7.0
+zipp==4.1.0

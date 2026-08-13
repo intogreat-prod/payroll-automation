@@ -35,7 +35,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QApplication
 
 from utils.app_config_user import get
-from utils.file_utils import att_summary_path
+from utils.file_utils import payroll_app_path, create_path
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -321,7 +321,7 @@ class AttendanceSummaryTool:
 
         # ── Write Excel ──────────────────────────────────────────────
         stamp    = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = att_summary_path() / f"Attendance_Summary_{start_date}_{cutoff_date}_{stamp}.xlsx"
+        out_path = create_path(payroll_app_path() / "Tools") / f"Attendance_Summary_{start_date}_{cutoff_date}_{stamp}.xlsx"
 
         self._write_workbook(df, out_path, start_date, cutoff_date)
         self.log.info(f"AttendanceSummaryTool: Output written | path={out_path}")

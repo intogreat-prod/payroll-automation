@@ -1,5 +1,5 @@
 """
-setup_helper.py — one-time machine configuration for Payroll Automation.
+setup_helper.py — one-time machine configuration for Finance Suite.
 
 This script is compiled to setup_helper.exe by PyInstaller and called
 silently by the Inno Setup installer during installation. It writes all
@@ -31,8 +31,8 @@ except ImportError:
     sys.exit(1)
 
 # ── Constants ────────────────────────────────────────────────────────────────
-REG_PATH        = r"SOFTWARE\Intogreat\PayrollAutomation"
-KEYRING_SERVICE = "PayrollAutomation"
+REG_PATH        = r"SOFTWARE\Intogreat\FinanceSuite"
+KEYRING_SERVICE = "FinanceSuite"
 
 
 def write_registry(values: dict):
@@ -57,7 +57,7 @@ def main():
         print("ERROR: Not running as admin")
         sys.exit(1)
 
-    parser = argparse.ArgumentParser(description="Payroll Automation — Machine Setup")
+    parser = argparse.ArgumentParser(description="Finance Suite — Machine Setup")
 
     # Secrets (go to Credential Manager)
     parser.add_argument("--client-id",   required=True,  help="Azure AD app client ID")
@@ -75,7 +75,7 @@ def main():
 
     args = parser.parse_args()
 
-    print("\nPayroll Automation — Writing machine configuration...\n")
+    print("\nFinance Suite — Writing machine configuration...\n")
 
     write_secrets({
         "CLIENT_ID": args.client_id,
@@ -93,7 +93,7 @@ def main():
         "support_email":  args.support_email,
     })
 
-    print("\nSetup complete. You can now launch Payroll Automation.\n")
+    print("\nSetup complete. You can now launch Finance Suite.\n")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """
 email_template.py
 -----------------
-HTML email templates used by the Payroll Automation app.
+HTML email templates used by the Finance Suite app.
 
 Templates are plain Python string constants with {placeholder} slots
 for runtime values.  They are rendered via str.format() at the call
@@ -25,7 +25,7 @@ WELCOME_EMAIL = """
     <head>
         <meta charset='UTF-8'>
         <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-        <title>Payroll Automation</title>
+        <title>Finance Suite</title>
     </head>
 
     <body style='margin:0;padding:0;background-color:#1E1E1E;font-family:Arial,sans-serif;color:#333;'>
@@ -42,10 +42,10 @@ WELCOME_EMAIL = """
 
             <p>Hi <b>Team,</b></p>
 
-            <p>Welcome to <b>Payroll Automation</b>!</p>
+            <p>Welcome to <b>Finance Suite</b>!</p>
 
             <p style='margin-top:20px;'>
-                <b>{user}</b> has added you as a user of the Payroll Automation system.
+                <b>{user}</b> has added you as a user of the Finance Suite system.
                 Let's get you set up.
             </p>
 

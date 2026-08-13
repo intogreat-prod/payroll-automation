@@ -30,6 +30,9 @@ ATTENDANCE_SUMMARY — codes emitted by the Attendance Summary flow
 # PARSER
 # ---------------------------------------------------------------------------
 
+import orchestrator
+
+
 def parse_status_code(code: str) -> tuple[str, str]:
     """
     Split a status code into its (file_name, status_key) parts.
@@ -59,6 +62,7 @@ def parse_status_code(code: str) -> tuple[str, str]:
 # PAYROLL STATUSES
 # Emitted by: features/payroll.py, orchestrator._upload_sp_files,
 #             orchestrator._start_unmand, orchestrator._check_unmand
+#              orchestrator._save_deminimis,
 # ---------------------------------------------------------------------------
 
 PAYROLL_STATUSES = {
@@ -68,12 +72,16 @@ PAYROLL_STATUSES = {
     "unmand_init_success":     "Unmand initiated successfully. {file_name}",
     "unmand_status_success":   "Unmand automation completed successfully. "
                                "Please verify the generated output.",
+    "deminimis_save_success": "Deminimis values saved successfully.",
+
 
     # ── File errors ───────────────────────────────────────────────────
     "no_file_error":           "No files selected — aborting upload.",
     "file_exceed_error":       "Number of files exceeds the expected limit. "
                                "Please verify your upload.",
-    "sensitivity_error":       "Payroll Headers and Premium.xlsx sensitivity "
+    "headers_sensitivity_error":       "Payroll Headers and Premium.xlsx sensitivity "
+                               "or password protection issue detected.",
+    "sensitivity_error":       "{file_name} sensitivity "
                                "or password protection issue detected.",
     "date_format_error":       "Date format error detected in {file_name}.",
     "not_found_error":         "{file_name} — file not found in the upload.",
@@ -104,6 +112,12 @@ PAYROLL_STATUSES = {
                                   "Please check your inbox for details.",
     "unmand_status_pending_error": "Unmand is still processing. "
                                    "Please check again shortly.",
+
+    # ── Save Deminimis/ operation errors ───────────────────────────────────────
+    "deminimis_save_error":   "Failed to save deminimis. "
+                              "Please contact the Automation Team.",
+    "error_value":            "Invalid input value. "
+                              "Please check your entry and try again.",
 }
 
 
@@ -139,19 +153,47 @@ CHECKER_STATUSES = {
 
 
 # ---------------------------------------------------------------------------
-# SETTINGS STATUSES
-# Emitted by: orchestrator._save_deminimis, orchestrator._add_user
+# BILLING CHECKER STATUSES
+# Emitted by: features/billing/checker.py [BillingCheckerFeature],
+#             orchestrators/billing_orchestrator.py
 # ---------------------------------------------------------------------------
 
-SETTINGS_STATUSES = {
+BILLING_CHECKER_STATUSES = {
 
     # ── Success ───────────────────────────────────────────────────────
-    "deminimis_save_success": "Deminimis values saved successfully.",
+    "file_success":           "Files added successfully.",
+    "validated_success":      "Checker validation completed successfully.",
+
+    # ── File count / identity errors ──────────────────────────────────
+    "no_file_error":          "No files selected — aborting upload.",
+    "file_exceed_error":      "Number of files exceeds the expected limit "
+                              "of 2. Please verify your upload.",
+    "currency_error":          "{file_name} — Non-AUD currency found.",
+    "missing_column_error":    "{file_name}",
+    "manual_error":           "Manual Checker file not found.",
+    "unmand_error":           "Unmand Checker file not found.",
+
+    # ── Structural errors ─────────────────────────────────────────────
+    "missing_header_error":   "{file_name} — Missing Row 1 Header.",
+    "sensitivity_error":      "File sensitivity or password protection "
+                              "issue detected in {file_name}.",
+
+    # ── Processing errors ─────────────────────────────────────────────
+    "processing_error":       "The checker encountered an error. "
+                              "Please contact support.",
+}
+
+
+# ---------------------------------------------------------------------------
+# SETTINGS STATUSES
+# Emitted by: orchestrator._add_user
+# ---------------------------------------------------------------------------
+
+APP_SETTINGS_STATUSES = {
+    # ── Success ───────────────────────────────────────────────────────
     "add_user_success":       "User added successfully.",
 
     # ── Save / operation errors ───────────────────────────────────────
-    "deminimis_save_error":   "Failed to save deminimis. "
-                              "Please contact the Automation Team.",
     "add_user_error":         "Failed to add user. "
                               "Please contact the Automation Team.",
     "add_user_email_error":   "User added, but the welcome email could not be sent. "

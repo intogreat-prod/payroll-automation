@@ -42,7 +42,7 @@ from openpyxl.utils import get_column_letter
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QApplication
 from utils.app_config_user import get
-from utils.file_utils import dbx_payroll_path
+from utils.file_utils import payroll_app_path, create_path
 
 
 # Only one file is expected per session
@@ -60,9 +60,10 @@ _DETAILS_HEADERS = {
     "Name":                   "Employee Name",
     "Shift Date":             "Shift Date",
     "Shift Name":             "Shift Name",
-    "Shift Start Time":       "Clockin",
-    "Shift End Date":         "Clockout",
+    "Clockin":                "Clockin",
+    "Clockout":                "Clockout",
     "Attendance Policy Name": "Policy",
+    "Status":                   "Status",
 }
 
 # Excel time-format string; [h] allows totals >= 24 h in the Final sheet
@@ -464,35 +465,23 @@ class DarwinToSproutTool:
         self, df: pd.DataFrame, header_map: dict, filename: str
     ) -> pd.DataFrame:
         """
-        Convert payroll columns to Excel time fractions using vectorised ops.
+        Convert payroll columns to Excel time fractions.
 
         Conversion rules
         ----------------
-        - N.A. / NA / na / "-" / NaN / 0  →  0.0       (renders as 0:00)
-        - "H:MM:SS" or "HH:MM:SS" string  →  fraction   (e.g. "4:00:00" → 0.1667)
-        - decimal float like 6.85          →  fraction   (6h 51m → 0.2854)
-
-        Uses pd.to_numeric + fully vectorised string parsing (str.split +
-        pd.to_numeric on split parts) — no Python-level row loop anywhere —
-        to stay fast on 16 000+ row files.
-
-        Parameters
-        ----------
-        df         : pd.DataFrame  — copy of the raw DataFrame (dtype=str)
-        header_map : dict[str, str]
-        filename   : str           — used for logging only
-
-        Returns
-        -------
-        pd.DataFrame
+        - N.A. / NA / na / "-" / NaN / 0  →  0.0
+        - "H:MM:SS" / "HH:MM:SS" / "H:MM" → Excel time
+        (seconds are ignored)
+        - Decimal hours (e.g. 6.85) → Excel time
         """
+
         self.log.info(
             f"DarwinToSproutTool: Converting payroll columns | file={filename}"
         )
 
         payroll_cols = {col.strip() for col in header_map}
-        converted    = 0
-        skipped      = 0
+        converted = 0
+        skipped = 0
 
         for col in df.columns:
             if col.strip() not in payroll_cols:
@@ -501,37 +490,52 @@ class DarwinToSproutTool:
 
             s = df[col].astype(str).str.strip()
 
-            # ── 1. Mark explicit invalid / empty markers ──────────────
-            invalid_mask = s.isin(_INVALID_VALUES) | (s == "nan")
+            # 1. Invalid values
+            invalid_mask = s.isin(_INVALID_VALUES) | (s.str.lower() == "nan")
 
-            # ── 2. Coerce to numeric (handles plain floats like "6.85")
+            # 2. Parse numeric values (decimal hours)
             numeric = pd.to_numeric(s, errors="coerce")
 
-            # ── 3. Parse "H:MM:SS" / "H:MM" strings where numeric failed ─
-            #       Fully vectorised — splits all rows at once, no .map() loop.
+            # Preserve which rows are time strings
             time_str_mask = numeric.isna() & ~invalid_mask
+
+            # 3. Parse HH:MM[:SS] strings
             if time_str_mask.any():
                 parts = (
-                    s[time_str_mask]
+                    s.loc[time_str_mask]
                     .str.split(":", expand=True)
                     .reindex(columns=[0, 1, 2], fill_value="0")
                 )
-                h     = pd.to_numeric(parts[0], errors="coerce").fillna(0)
-                m     = pd.to_numeric(parts[1], errors="coerce").fillna(0)
-                sec   = pd.to_numeric(parts[2], errors="coerce").fillna(0)
-                numeric[time_str_mask] = (h * 60 + m + (sec / 60).round()) / 1440
 
-            # ── 4. Convert decimal hours → Excel time fraction ────────
-            #       round() keeps minutes accurate (e.g. 6.85 → 411 min)
-            #       Fully vectorised — no Python-level row loop.
-            valid_mask          = numeric.notna() & (numeric != 0) & ~invalid_mask
-            numeric[valid_mask] = (numeric[valid_mask] * 60).round() / 1440
+                h = pd.to_numeric(parts[0], errors="coerce").fillna(0)
+                m = pd.to_numeric(parts[1], errors="coerce").fillna(0)
 
-            # ── 5. Everything else (zero, NaN, invalid) → 0.0 ────────
-            numeric = numeric.where(valid_mask, 0.0).astype(float)
+                # Seconds intentionally ignored
+                total_minutes = h * 60 + m
 
-            df[col]   = numeric
+                numeric.loc[time_str_mask] = total_minutes / 1440
+
+            # 4. Convert ONLY decimal-hour values
+            decimal_mask = (
+                numeric.notna()
+                & ~time_str_mask
+                & ~invalid_mask
+                & (numeric != 0)
+            )
+
+            numeric.loc[decimal_mask] = (
+                numeric.loc[decimal_mask] * 60
+            ).round() / 1440
+
+            # 5. Invalid / zero values become 0
+            numeric = numeric.where(
+                numeric.notna() & ~invalid_mask,
+                0.0
+            ).astype(float)
+
+            df[col] = numeric
             converted += 1
+
             self.log.info(
                 f"DarwinToSproutTool: Converted column | "
                 f"file={filename} col='{col}'"
@@ -541,6 +545,7 @@ class DarwinToSproutTool:
             f"DarwinToSproutTool: Conversion complete | "
             f"file={filename} converted={converted} skipped={skipped}"
         )
+
         return df
 
     # ===================================================================
@@ -705,10 +710,8 @@ class DarwinToSproutTool:
             The output_path that was written.
         """
 
-        output_path = (
-            dbx_payroll_path() /
-            f"DarwinBox_to_Sprout_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        )
+        output_path = create_path(payroll_app_path() / "Tools") / f"DarwinBox_to_Sprout_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
 
         self.log.info(
             f"DarwinToSproutTool: Exporting workbook | "

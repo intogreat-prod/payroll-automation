@@ -1,4 +1,4 @@
-# Payroll Automation
+# Finance Suite
 
 A PyQt6 desktop app that validates, uploads, and processes payroll files through SharePoint and the Unmand RPA platform.
 
@@ -21,11 +21,20 @@ A PyQt6 desktop app that validates, uploads, and processes payroll files through
 
 ```
 Payroll.py              # Entry point — boots Qt, creates Orchestrator
-orchestrator.py         # App state, flow control, routes all UI events
+orchestrator.py         # Suite root — login, config, updates, suite navigation
+
+orchestrators/
+    payroll_orchestrator.py  # All Payroll app flow (automation, tools, checker, settings)
+    billing_orchestrator.py  # Billing app flow (placeholder — screens not built yet)
 
 features/
-    payroll.py          # File picker, validation, and upload prep for payroll
-    checker.py          # File picker and validation for the variance checker
+    payroll/
+        payroll.py          # File picker, validation, and upload prep for payroll
+        checker.py          # File picker and validation for the variance checker
+        dbx_to_sprout.py    # DarwinBox → Sprout conversion tool
+        attendance_summary.py  # Attendance summary generator
+        settings.py         # Payroll settings helpers
+    billing/                # Placeholder — no billing features yet
 
 services/
     msal_service.py     # Microsoft login (MSAL)
@@ -38,16 +47,19 @@ services/
 ui/
     main_window.py      # Root window, holds header/body/footer
     statuses.py         # All user-facing status message strings
-    styles.py           # Qt stylesheets
-    ui_factory.py       # Widget builders (button, label, input, card, etc.)
+    styles.py            # Qt stylesheets
+    ui_factory.py        # Widget builders (button, label, input, card, etc.)
     components/
         header.py
-        body.py         # Screen switcher — show_login(), show_payroll_feature(), etc.
+        body.py         # Screen switcher — dispatches to per-app body screens
         footer.py
         login_form.py
+        body_apps/
+            payroll_app.py   # Payroll screens
+            billing_app.py   # Billing screens (placeholder)
 
 utils/
-    logger.py           # App-wide logger (console + file)
+    logger.py           # App-wide logger (console + file), tag with for_module("Payroll")
     error_handler.py    # Global uncaught exception hook
     file_manager.py     # Archives old files, uploads session log
     file_utils.py       # Path helpers (app_data_path, resource_path, etc.)
@@ -87,7 +99,7 @@ Create a `.env` file in the project root. All keys are required unless marked op
 | `SP_BASE_URL` | Microsoft Graph SharePoint drive base URL, e.g. `https://graph.microsoft.com/v1.0/sites/<id>/drive/` |
 | `config_loc`  | Path to the config JSON inside the drive, e.g. `root:/Config/payroll_config.json:/content`           |
 | `loc`         | Leaf folder name under `~/Documents/Automations/` — separates prod/dev data on the same machine      |
-| `app`         | Human-readable app name shown in error reports, e.g. `Payroll Automation`                            |
+| `app`         | Human-readable app name shown in error reports, e.g. `Finance Suite                                  |
 | `ENVT`        | Environment label shown in error reports, e.g. `PROD` or `DEV`                                       |
 
 ---
@@ -113,7 +125,7 @@ The app fetches a JSON config file from SharePoint on every login. It controls:
 
 ```bash
 pip install pyinstaller
-pyinstaller --clean --onedir --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py
+pyinstaller --clean --onedir --windowed --icon=assets/icon.ico --add-data "assets;assets" Finance.py
 ```
 
 The bundled `.exe` will be in `dist/`. Asset files (images, icons) are resolved via `resource_path()` which handles the `sys._MEIPASS` path automatically.
@@ -125,15 +137,18 @@ The bundled `.exe` will be in `dist/`. Asset files (images, icons) are resolved 
 The app follows a strict three-layer separation:
 
 - **Body** (`ui/components/body.py`) — renders screens, never calls services directly
-- **Orchestrator** (`orchestrator.py`) — owns all state, routes events, calls services
+- **Orchestrator** (`orchestrator.py` + `orchestrators/`) — owns all state, routes events, calls services
 - **Services / Features** — pure logic, no UI imports
+
+`orchestrator.py` is the suite root: it owns `state`, handles login/config/updates, and routes top-level suite navigation (suite menu, account, help, credits). Every action that happens *inside* a specific app (Payroll, Billing) is delegated to that app's child orchestrator in `orchestrators/` — e.g. `PayrollOrchestrator` owns the automation/tools/checker/settings flow. Child orchestrators hold a reference back to the suite root and read/write `suite.state` directly, so state is still one shared source of truth.
 
 All callbacks flow as:
 ```
-Body.on_clicked → Orchestrator handler → Service → Orchestrator → body.show_*()
+Body.on_clicked → Orchestrator._handle_body_clicks → (suite-level action, or)
+                  → active app's child orchestrator.handle_click → Service → body.show_*()
 ```
 
-Logging is centralised — one `Logger` instance is created in `Orchestrator.__init__` and passed down. Nothing creates its own logger.
+Logging is centralised — one `Logger` instance is created in `Orchestrator.__init__` and passed down. Nothing creates its own logger. Each child orchestrator gets a tagged view via `log.for_module("Payroll")` / `log.for_module("Billing")`, so every line in the shared session log file is traceable to the app that produced it.
 
 ---
 
@@ -161,7 +176,7 @@ All runtime data is written to:
 ### Step 1 — Fill in your values
 
 Download it at the Automation Team Sharepoint metadata's app folder
-Open `installer/PayrollAutomation.iss` and update the `[Config]` section at the top:
+Open `installer/FinanceSuite.iss` and update the `[Config]` section at the top:
 
 ```
 #define ClientID     "YOUR-CLIENT-ID-HERE"
@@ -176,7 +191,7 @@ These values are embedded into the installer and written to the target machine d
 
 ```bash
 # Main app
-pyinstaller --clean --onedir --windowed --icon=assets/icon.ico --add-data "assets;assets" Payroll.py   
+pyinstaller --clean --onedir --windowed --icon=assets/icon.ico --add-data "assets;assets" "Finance Suite.py"
 
 # Setup helper (writes registry + Credential Manager on install)
 pyinstaller installer/setup_helper.spec
@@ -189,16 +204,16 @@ All three `.exe` files land in `dist/`.
 
 ### Step 3 — Compile the installer
 
-Open `installer/PayrollAutomation.iss` in Inno Setup Compiler and press **Build → Compile** (or `Ctrl+F9`).
+Open `installer/FinanceSuite.iss` in Inno Setup Compiler and press **Build → Compile** (or `Ctrl+F9`).
 
-Output: `installer/Output/PayrollAutomation_Setup.exe`
+Output: `installer/Output/FinanceSuite.exe`
 
 ### What the installer does
 
-1. Copies `PayrollAutomation.exe` to `Program Files\Intogreat Solutions\Payroll Automation\`
+1. Copies `FinanceSuite.exe` to `Program Files\Intogreat Solutions\Finance Suite\`
 2. Runs `setup_helper.exe` silently, which:
    - Writes `CLIENT_ID` and `TENANT_ID` to **Windows Credential Manager** (DPAPI-encrypted)
-   - Writes all other config values to **HKLM\SOFTWARE\Intogreat\PayrollAutomation**
+   - Writes all other config values to **HKLM\SOFTWARE\Intogreat\FinanceSuite**
 3. Creates Start Menu shortcuts (and optionally a desktop shortcut)
 4. Registers a proper uninstaller in **Add or Remove Programs**
 

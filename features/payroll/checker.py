@@ -37,7 +37,7 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QApplication
 
 from utils.app_config_user import get
-from utils.file_utils import validation_path
+from utils.file_utils import payroll_app_path, create_path
 
 # Maximum number of checker files allowed per session
 MAX_FILES = 2
@@ -499,10 +499,8 @@ class CheckerFeature:
         )
         accuracy_pct = round((1 - accuracy) * 100, 2)
 
-        file_path = (
-            validation_path() /
-            f"Checker_Variance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        )
+        file_path = create_path(payroll_app_path() / "Automations" / "Tools" ) / f"Checker_Variance_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
 
         today  = datetime.now().strftime("%Y-%m-%d")
         meta_df = pd.DataFrame({

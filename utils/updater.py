@@ -6,6 +6,8 @@ private repo. The token only needs Contents: Read-only permission.
 
 import os
 import sys
+import time
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -90,8 +92,10 @@ class DownloadWorker(QThread):
         self.log          = log
         self.file_manager = file_manager
         self.state        = state
+        self.app_loc      = get("installation_loc") + "/Finance Suite.exe"
 
     def run(self):
+        tmp_dir = None
         try:
             self.log.info(f"Updater: Downloading asset {self.asset_id}")
 
@@ -111,7 +115,7 @@ class DownloadWorker(QThread):
             downloaded = 0
 
             tmp_dir  = tempfile.mkdtemp()
-            tmp_path = os.path.join(tmp_dir, "PayrollAutomation_Setup.exe")
+            tmp_path = os.path.join(tmp_dir, "FinanceSuite_User_Setup.exe")
 
             self.progress.emit(0, "Starting download...")
 
@@ -122,25 +126,41 @@ class DownloadWorker(QThread):
                     f.write(chunk)
                     downloaded += len(chunk)
                     if total:
-                        percent = int((downloaded / total) * 100)
+                        percent = int((downloaded / total) * 80)
                         self.progress.emit(percent, "Downloading update...")
 
-            self.progress.emit(100, "Launching installer...")
+            self.progress.emit(80, "Launching installer...")
+            self.log.info(f"Updater: Downloaded installer to {tmp_path}")
 
+            self.log.info("Updater: Launching installer")
             installer = subprocess.Popen(
-                [tmp_path, "/VERYSILENT", "/NORESTART", "/CLOSEAPPLICATIONS"],
+                [tmp_path, "/VERYSILENT", "/NORESTART"],
                 close_fds=True,
             )
-            
-            installer.wait()
-            executable = Path(sys.argv[0]).resolve()
-            self.file_manager.upload_log(self.state)
-            self.log.info(str(executable))
-            subprocess.Popen([str(executable)], creationflags=subprocess.CREATE_NO_WINDOW)
+
+            self.log.info(
+                f"Updater: Installer launched successfully. PID={installer.pid}"
+            )
+
+            self.log.info(
+                f"Updater: Installer poll immediately after launch = {installer.poll()}"
+            )
 
             self.finished.emit(True)
-            os._exit(0)
+            self.file_manager.upload_log(self.state)
+            self.progress.emit(100, "Updating...")
+            time.sleep(2)
+            self.log.info("Updater: Closing FinanceSuite")
+            sys.exit(0)
 
         except Exception as e:
-            self.log.warning(f"Updater: Download failed — {e}")
+            self.log.warning(f"Updater: Download/install failed — {e}")
             self.finished.emit(False)
+
+        finally:
+            if tmp_dir:
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    self.log.info(f"Updater: Cleaned up temp directory {tmp_dir}")
+                except Exception as e:
+                    self.log.warning(f"Updater: Failed to clean up temp directory - {e}")

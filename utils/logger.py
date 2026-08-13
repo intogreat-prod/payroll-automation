@@ -1,10 +1,14 @@
 """
 logger.py — app-wide logger.
 
-One Logger instance is created in Orchestrator and passed down to every service,
-feature, and util. Nothing creates its own — this keeps all output in one file
-and lets the caller prefix (e.g. "MSALService:", "PayrollFeature:") do the
-work of identifying where a line came from.
+One Logger instance is created in the suite Orchestrator and passed down to
+every service, feature, and util. Nothing creates its own — this keeps all
+output in one file.
+
+As of the Finance Suite restructure, every action can also be tagged with
+the suite app it belongs to (Payroll, Billing, ...) via for_module(), so a
+shared log file stays readable as more apps are added — nothing else about
+how callers use the logger changes.
 
 Writes to both the console (colour-coded) and a per-session log file at:
     ~/Documents/Automations/<loc>/data/logs/logs_<session_id>.log
@@ -16,6 +20,17 @@ Quick reference:
     log.section("LOGIN")                      # prints a separator block
     log.event("btn clicked", btn="upload")    # structured key=value line
     log.result("SP upload", success=True, detail="HTTP 201")
+
+Per-module tagging (new):
+    payroll_log = log.for_module("Payroll")
+    payroll_log.info("Payroll upload started")   # -> [Payroll] Payroll upload started
+
+    billing_log = log.for_module("Billing")
+    billing_log.info("Invoice generated")        # -> [Billing] Invoice generated
+
+Both write to the same underlying session log file, so a single log still
+tells the whole story of a session, just with a clear tag for which app
+each line came from.
 """
 
 import datetime
@@ -38,10 +53,11 @@ class Logger:
         "SECTION": Fore.BLUE,
     }
 
-    def __init__(self, app_data_path, session_id: str = None):
+    def __init__(self, app_data_path, session_id: str = None, app_name: str = "Finance Suite"):
         timestamp  = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         session_id = session_id or timestamp
 
+        self.app_name = app_name
         self.log_file = Path(app_data_path) / "data" / "logs" / f"logs_{session_id}.log"
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -124,13 +140,28 @@ class Logger:
         self.log(msg, "INFO" if success else "WARNING")
 
     # -------------------------------------------------------------------------
+    # Per-app tagging
+
+    def for_module(self, module_name: str) -> "_ModuleLoggerAdapter":
+        """
+        Returns a tagged logger for one suite app (e.g. "Payroll", "Billing").
+
+        Every info/warning/error/debug/event/result line written through the
+        adapter is prefixed with "[module_name]" so a shared log file stays
+        traceable to the right app as the suite grows. section() stays
+        untagged since it's a visual separator shared across the whole
+        session, not a per-action log line.
+        """
+        return _ModuleLoggerAdapter(self, module_name)
+
+    # -------------------------------------------------------------------------
 
     def _write_header(self, session_id: str):
         """Stamps the top of each log file so it's self-identifying."""
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         header = (
             f"{'═' * 60}\n"
-            f"  Payroll Automation — Session Log\n"
+            f"  {self.app_name} — Session Log\n"
             f"  Session : {session_id}\n"
             f"  Started : {now}\n"
             f"  File    : {self.log_file}\n"
@@ -141,3 +172,44 @@ class Logger:
 
         self.info(f"Logger ready | session={session_id}")
         self.info(f"Log file: {self.log_file}")
+
+
+class _ModuleLoggerAdapter:
+    """
+    Thin per-app wrapper around a Logger, returned by Logger.for_module().
+
+    Mirrors Logger's public logging API exactly (info/warning/error/debug/
+    event/result/section) so existing call sites keep working unchanged —
+    the only difference is every tagged line is prefixed with the module
+    name. Writes go through the same underlying Logger, so there's still
+    one log file per session.
+    """
+
+    def __init__(self, logger: Logger, module_name: str):
+        self._logger = logger
+        self.module_name = module_name
+
+    def _tag(self, msg: str) -> str:
+        return f"[{self.module_name}] {msg}"
+
+    def info(self, msg: str):
+        self._logger.info(self._tag(msg))
+
+    def warning(self, msg: str, error: Exception = None):
+        self._logger.warning(self._tag(msg), error=error)
+
+    def error(self, msg: str, error: Exception = None):
+        self._logger.error(self._tag(msg), error=error)
+
+    def debug(self, msg: str):
+        self._logger.debug(self._tag(msg))
+
+    def section(self, title: str):
+        # Untagged — this is a shared visual separator, not a per-app line.
+        self._logger.section(title)
+
+    def event(self, action: str, **kwargs):
+        self._logger.event(self._tag(action), **kwargs)
+
+    def result(self, step: str, success: bool, detail: str = ""):
+        self._logger.result(self._tag(step), success, detail)

@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['Payroll.py'],
+    ['Finance Suite.py'],
     pathex=[],
     binaries=[],
     datas=[('assets', 'assets')],
@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Payroll',
+    name='Finance Suite',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -41,5 +41,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='Payroll',
+    name='Finance Suite',
 )

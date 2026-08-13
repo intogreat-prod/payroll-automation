@@ -16,3 +16,7 @@ def internet_available(timeout: int = 3) -> bool:
         return True
     except Exception:
         return False
+
+def ok(response) -> bool:
+    """Returns True for any 2xx HTTP status code."""
+    return 200 <= response.status_code < 300

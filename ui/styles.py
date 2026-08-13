@@ -355,6 +355,33 @@ STYLES = {
             );
             border-radius: 1px;
             }
-            """
-        
+            """,
+
+    "link_style":"""
+    QPushButton {
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid transparent;
+        color: #8F96A3;
+        font-size: 11px;
+        padding: 2px 0px;
+    }
+    QPushButton:hover {
+        color: #F5F5F5;
+        border-bottom: 1px solid #F5F5F5;
+    }
+""",
+
+    # --- Breadcrumb nav bar (persistent, bottom of Body) ---
+    "breadcrumb_bar": """
+        QLabel {
+            font-size: 10px;
+            font-weight: 600;
+            color: rgba(110, 206, 245, 0.8);
+            background: transparent;
+            border: none;
+            padding: 2px 12px 2px 12px;
+        }
+    """,
+
 }

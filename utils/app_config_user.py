@@ -26,8 +26,8 @@ except ImportError:
 from dotenv import load_dotenv, dotenv_values
 
 # Registry paths (admin install only)
-_REG_PATH        = r"SOFTWARE\Intogreat\PayrollAutomation"
-_KEYRING_SERVICE = "PayrollAutomation"
+_REG_PATH        = r"SOFTWARE\Intogreat\FinanceSuite"
+_KEYRING_SERVICE = "FinanceSuite"
 _SECRET_KEYS     = {"CLIENT_ID", "TENANT_ID", "SP_BASE_URL", "config_loc", "GH_PAT", "PASSWORD_PREFIX"}
 
 # Load .env from the app directory first (user install), then from current dir (dev)

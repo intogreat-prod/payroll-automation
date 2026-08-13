@@ -21,6 +21,9 @@ import sys
 from pathlib import Path
 from utils.app_config_user import get
 
+def create_path(path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 def app_data_path() -> Path:
     """Returns (and creates) the root data folder: ~/Documents/Automations/<loc>/"""
@@ -28,13 +31,11 @@ def app_data_path() -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-
 def logs_path() -> Path:
     """Returns (and creates) <app_data>/data/logs/"""
     path = app_data_path() / "data" / "logs"
     path.mkdir(parents=True, exist_ok=True)
     return path
-
 
 def archive_path() -> Path:
     """Returns (and creates) <app_data>/data/archive/"""
@@ -42,23 +43,15 @@ def archive_path() -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-
-def validation_path() -> Path:
+def payroll_app_path() -> Path:
     """Returns (and creates) <app_data>/data/validation/"""
-    path = app_data_path() / "data" / "validation"
+    path = app_data_path() / "data" / "Payroll App"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-
-def dbx_payroll_path() -> Path:
+def billing_app_path() -> Path:
     """Returns (and creates) <app_data>/data/validation/"""
-    path = app_data_path() / "data" / "tools" / "DBXtoSprout"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-def att_summary_path() -> Path:
-    """Returns (and creates) <app_data>/data/validation/"""
-    path = app_data_path() / "data" / "tools" / "Attendance Summary"
+    path = app_data_path() / "data" / "Billing App"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

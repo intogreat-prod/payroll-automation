@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-KEYRING_SERVICE = "PayrollAutomation"
+KEYRING_SERVICE = "FinanceSuite"
 
 try:
     import keyring
@@ -35,8 +35,37 @@ def write_secrets(secrets: dict):
         keyring.set_password(KEYRING_SERVICE, key, value)
         print(f"  [Credential Manager] {key} stored")
 
+# Same secret keys written by setup_helper_user.py
+SECRET_KEYS = [
+    "CLIENT_ID",
+    "TENANT_ID",
+    "GH_PAT",
+    "SP_BASE_URL",
+    "config_loc",
+    "PASSWORD_PREFIX",
+]
+
+# Current + legacy keyring service names to clean up
+KEYRING_SERVICES = ["FinanceSuite", "PayrollAutomation"]
+
+def delete_secrets():
+    """Removes stored secrets from Windows Credential Manager, current and legacy service names."""
+    for service in KEYRING_SERVICES:
+        for key in SECRET_KEYS:
+            try:
+                keyring.delete_password(service, key)
+                print(f"  [Credential Manager] Removed {service}/{key}")
+            except keyring.errors.PasswordDeleteError:
+                # Not found — nothing to do
+                pass
+            except Exception as e:
+                print(f"  [Warn] Could not remove {service}/{key} — {e}")
+
 
 def main():
+
+   delete_secrets()
+   
    parser = argparse.ArgumentParser()
 
    # Secrets (go to Credential Manager)
@@ -57,7 +86,7 @@ def main():
    parser.add_argument("--app-dir",             required=True, help="Directory where the .exe lives")
    args = parser.parse_args()
 
-   print("\nPayroll Automation — Writing configuration file...\n")
+   print("\nFinance Suite — Writing configuration file...\n")
 
    write_env(args.app_dir, {
        "loc":                    args.loc,

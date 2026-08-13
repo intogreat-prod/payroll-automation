@@ -19,9 +19,11 @@ _TIMEOUT = 30
 
 class ConfigService:
 
-    def __init__(self):
+    def __init__(self, config_loc: str = ""):
         base_url   = get("SP_BASE_URL", "")
-        config_loc = get("config_loc", "")
+        if not config_loc:
+            config_loc = get("config_loc", "")
+
         self.config_url = f"{base_url}{config_loc}"
 
     def get(self, token: str) -> requests.Response:
@@ -33,7 +35,7 @@ class ConfigService:
             return response
 
         raise Exception(
-            f"ConfigService: Failed to fetch config — HTTP {response.status_code}"
+            f"ConfigService: Failed to fetch config — HTTP {response.status_code} @ {self.config_url}"
         )
 
     def update(self, config_data: dict, token: str) -> requests.Response:

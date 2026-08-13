@@ -28,8 +28,7 @@ def main():
     orchestrator = Orchestrator()
     orchestrator.start()
 
-    splash.finish(orchestrator.main_window)
-
+    splash.finish(orchestrator.main_window)                                                                                                                                                                                             
     sys.exit(app.exec())
 
 

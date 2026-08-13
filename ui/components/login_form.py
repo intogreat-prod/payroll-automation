@@ -39,9 +39,9 @@ class LoginForm(QWidget):
         layout.setSpacing(8)
 
         # --- Title ---
-        title =  UIFactory.label("Welcome to Intogreat's Payroll Automation!", align="center", font_size=16, font_weight="bold", color='white')
+        title =  UIFactory.label("Welcome to Intogreat's Finance Suite!", align="left", font_size=16, font_weight="bold", color='white')
 
-        subtitle = UIFactory.label("Sign in your account", font_size=9, color='white')
+        subtitle = UIFactory.label("     Sign in your account", font_size=9, color='white')
 
         # --- Device code (hidden until needed) ---
         self._device_code_label = UIFactory.label("", font_size=12, font_weight="bold", selectable=True, color="white")
@@ -49,7 +49,6 @@ class LoginForm(QWidget):
 
         # --- Login button ---
         login_btn = UIFactory.button("Log in", self._on_login_callback, "payroll_button")
-
 
         # --- Error labels (hidden until needed) ---
         self._error_login = UIFactory.label("", color="red", align="center", selectable=True)
@@ -85,7 +84,7 @@ class LoginForm(QWidget):
     # ===================================================================
 
     def show_device_code(self, payload):
-        self._device_code_label.setText(f"Enter Code: {payload.get('user_code')}")
+        self._device_code_label.setText(f"   Enter Code: {payload.get('user_code')}")
         self._device_code_label.show()
         webbrowser.open(payload.get('url'))
 

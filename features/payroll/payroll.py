@@ -36,12 +36,10 @@ from pathlib import Path
 
 import msoffcrypto
 import pandas as pd
-from dotenv import load_dotenv
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QFileDialog, QApplication
 
 from services.sharepoint_service import SharePointService
-from ui.statuses import parse_status_code
 from utils.app_config_user import get
 
 # Maximum number of files the user may select in one upload session
@@ -144,7 +142,7 @@ class PayrollFeature:
 
         except Exception as e:
             self.log.warning(f"PayrollFeature: Failed to parse headers sheet — {e}", error=e)
-            self._emit_result("sensitivity_error")
+            self._emit_result("headers_sensitivity_error")
             return None
 
     # ===================================================================

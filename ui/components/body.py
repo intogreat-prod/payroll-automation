@@ -27,6 +27,9 @@ from ui.ui_factory import UIFactory
 from ui.components.login_form import LoginForm
 from utils.file_utils import resource_path
 
+from ui.components.body_apps.payroll_app import PayrollBody
+from ui.components.body_apps.billing_app import BillingBody
+
 ACCENT = "#4FD1C5"  # teal, pulled from the intogreat logo mark
 
 class Body(QWidget):
@@ -45,10 +48,35 @@ class Body(QWidget):
         # ---------------------------------------------------------------
         self.on_clicked = None
 
-        # Root layout — screens are swapped in/out of this
-        self._layout = QVBoxLayout(self)
+        # ---------------------------------------------------------------
+        # Screen container — screens are swapped in/out of this via
+        # _clear(). It's nested one level below Body itself so the
+        # breadcrumb bar (below) can stay put across every _clear()
+        # call instead of getting wiped with the rest of the screen.
+        # ---------------------------------------------------------------
+        self._screen_container = QWidget()
+        self._layout = QVBoxLayout(self._screen_container)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(10)
+
+        # Reserve extra window height for the breadcrumb bar so every
+        # existing self._resize(w, h) call across the app doesn't need
+        # to be touched individually — see _resize() below.
+        self._breadcrumb_reserved_height = 22
+
+        self._breadcrumb = UIFactory.label(
+            "Home",
+            style_key="breadcrumb_bar",
+            align="center",
+        )
+        #self._breadcrumb.hide()
+        self._breadcrumb.setFixedHeight(self._breadcrumb_reserved_height)
+
+        self._root_layout = QVBoxLayout(self)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setSpacing(0)
+        self._root_layout.addWidget(self._screen_container, 1)
+        self._root_layout.addWidget(self._breadcrumb, 0)
 
         # ---------------------------------------------------------------
         # Aux UI storage
@@ -57,22 +85,27 @@ class Body(QWidget):
         # ---------------------------------------------------------------
         self.statuses = {
             "payroll":  {},
-            "checker":  {},
-            "settings": {}
+            "billing":  {}
         }
 
         self.buttons = {
             "payroll": {},
-            "checker": {}
+            "billing": {}
         }
 
         self.height = {
-            "payroll": 820,
-            "checker": 770,
-            "settings": 920,
-            "dbx_to_sprout": 730,
-            "att_summary": 830
+            "settings": 600,
         }
+
+        # ---------------------------------------------------------------
+        # App modules — composed onto Body, not inherited from it.
+        # Each borrows Body's _clear()/_resize()/_emit_clicked()/_layout
+        # via the `body` reference passed in, so screen-building code can
+        # live in its own file without changing how Orchestrator talks
+        # to the UI (it only ever calls self.body.show_x()).
+        # ---------------------------------------------------------------
+        self.payroll = PayrollBody(self)
+        self.billing = BillingBody(self)
 
     # ===================================================================
     # HELPERS
@@ -95,10 +128,37 @@ class Body(QWidget):
             if item.widget():
                 item.widget().hide()
                 item.widget().setParent(None)
+            elif item.layout():
+                self._clear_layout(item.layout())
+                item.layout().deleteLater()
 
     def _resize(self, w, h):
-        """Ask the parent MainWindow to resize itself."""
-        self._main_window.resize_to(w, h)
+        """
+        Ask the parent MainWindow to resize itself.
+
+        Adds a fixed allowance for the breadcrumb bar so none of the
+        per-screen resize calls scattered across body.py / body_apps
+        need to be adjusted individually.
+        """
+        extra = self._breadcrumb_reserved_height if self._breadcrumb.isVisible() else 0
+        self._main_window.resize_to(w, h + self._breadcrumb_reserved_height)
+
+    def set_breadcrumb(self, parts):
+        """
+        Update the persistent nav trail at the bottom of the body.
+
+        Args:
+            parts: a string, or a list/tuple of path segments, e.g.
+                   ["Home", "Billing", "Automation"]. Rendered as
+                   "Home ▸ Billing ▸ Automation".
+        """
+        if not parts:
+            parts = ["Home"]
+        if isinstance(parts, str):
+            text = parts
+        else:
+            text = " ▸ ".join(str(p) for p in parts if p)
+        self._breadcrumb.setText(text)
 
     def _hide_statuses(self):
         try:
@@ -234,8 +294,8 @@ class Body(QWidget):
         # -------------------------
         # Header
         # -------------------------
-        # NOTE: the "intogreat / PAYROLL AUTOMATION" wordmark already lives in
-        # your persistent header, so we don't repeat "Payroll Automation" here.
+        # NOTE: the "intogreat / Finance Suite" wordmark already lives in
+        # your persistent header, so we don't repeat "Finance Suite" here.
         # Just version + a short description.
         version = UIFactory.label(
             f"Version {app_version}",
@@ -244,9 +304,8 @@ class Body(QWidget):
             align="center"
         )
         description = UIFactory.label(
-            "Payroll Automation streamlines payroll processing by validating attendance, "
-            "applying payroll rules, identifying discrepancies, and generating accurate, "
-            "review-ready outputs for Finance and HR.",
+            "Finance Suite centralizes finance automation tools, streamlining repetitive tasks, "
+            "validating data, and improving operational efficiency through intelligent workflows.",
             font_size=11,
             color="#BEBEBE",
             align="center",
@@ -379,7 +438,7 @@ class Body(QWidget):
 
     def show_login(self):
         self._clear()
-        self._resize(400, 400)
+        self._resize(400, 370)
 
         self._login_form = LoginForm(on_login_callback=lambda: self._emit_clicked("login"))
 
@@ -389,11 +448,11 @@ class Body(QWidget):
 
     def update_login_form(self, action: str, *args):
         LOGIN_FORM_STATUSES = {
-            "device_code":     ((400, 400), "show_device_code"),
-            "restricted_user": ((400, 410), "show_restricted_user"),
-            "login_error":     ((400, 400), "show_error_login"),
-            "config_error":    ((400, 410), "show_error_download"),
-            "json_error":      ((400, 410), "show_error_json"),
+            "device_code":     ((400, 390), "show_device_code"),
+            "restricted_user": ((400, 390), "show_restricted_user"),
+            "login_error":     ((400, 390), "show_error_login"),
+            "config_error":    ((400, 390), "show_error_download"),
+            "json_error":      ((400, 390), "show_error_json"),
         }
 
         if not hasattr(self, "_login_form"):
@@ -428,7 +487,7 @@ class Body(QWidget):
             align="center"
         ))
         self._layout.addWidget(UIFactory.label(
-            f"A new version of Payroll Automation is available.",
+            f"A new version of Finance Suite is available.",
             style_key="standard",
             align="center",
             word_wrap=True
@@ -478,7 +537,7 @@ class Body(QWidget):
 
         # Header
         self._layout.addWidget(UIFactory.label(
-            "Updating Payroll Automation",
+            "Updating Finance Suite",
             style_key="header_label",
             align="center"
         ))
@@ -511,6 +570,8 @@ class Body(QWidget):
         self.download_progress = QProgressBar()
         self.download_progress.setRange(0, 100)
         self.download_progress.setValue(0)
+        self.download_progress.setFixedHeight(3)
+        self.download_progress.setStyleSheet(STYLES["progress_bar"])
         self.download_progress.setTextVisible(False)
         self._layout.addWidget(self.download_progress)
 
@@ -558,214 +619,193 @@ class Body(QWidget):
             lambda: self._emit_clicked("update_error_continue"),
             "payroll_button"
         ))
-    
+
     # ===================================================================
-    # SCREEN 5 — MAIN MENU SELECTION
+    # SCREEN 5 — SUITE ROOT
     # ===================================================================
-    def show_main_menu(self):
+    def show_suite_menu(self):
+        """
+        Top-level landing screen for the whole suite.
+        - Apps:    primary tile buttons, the growing list of apps (Payroll, Billing, ...)
+        - Utility: secondary actions (Account, Updates, Credits, Help) rendered
+                    as a small footer-style row of text links, not tiles.
+        """
         self._clear()
         self.setStyleSheet(STYLES["body_clear"])
-        self._resize(350, 420)
-
-        col, layout = UIFactory.button_column(
+        self._resize(370, 570)
+        suite_layout = QVBoxLayout()
+        suite_layout.setSpacing(5)
+        suite_layout.setContentsMargins(10, 10, 10, 10)
+        # ── Apps container ──────────────────────────────────────────
+        apps_con = QFrame()
+        apps_con.setStyleSheet(STYLES["standard_container"])
+        apps_layout = QVBoxLayout(apps_con)
+        apps_layout.setSpacing(1)
+        apps_layout.setContentsMargins(12, 12, 12, 12)
+        apps_layout.addWidget(UIFactory.label("Home", style_key="header_label", align="center"))
+        apps_col, apps_btn_layout = UIFactory.button_column(
             [
-                ("Payroll Automation", lambda: self._emit_clicked("automation_menu"), "payroll_button"),
-                ("Tools",              lambda: self._emit_clicked("tools_menu"),    "payroll_button"),
-                ("Settings",           lambda: self._emit_clicked("settings_menu"),  "payroll_button"),
+                ("Payroll", lambda: self._emit_clicked("payroll_app"), "payroll_button"),
+                ("Billing", lambda: self._emit_clicked("billing_app"), "payroll_button"),
+                ("Toolbox", lambda: self._emit_clicked("toolbox"), "payroll_button"),
+                ("Settings", lambda: self._emit_clicked("app_settings"), "payroll_button"),
             ],
-            spacing=12,
-            parent=self
-        )
-
-        layout.addStretch()
-        self._layout.addWidget(col)
-
-    def _horizontal_main_menu(self):
-        self._layout.setSpacing(8)
-        self.setStyleSheet(STYLES["body_clear"])
-
-        col, layout = UIFactory.button_row(
-            [
-                ("Payroll Automation", lambda: self._emit_clicked("automation_menu"), "payroll_button"),
-                ("Tools",              lambda: self._emit_clicked("tools_menu"),    "payroll_button"),
-                ("Settings",           lambda: self._emit_clicked("settings_menu"),  "payroll_button"),
-            ],
-            width=150,
-            parent=self
-        )
-        layout.addStretch()
-        col.setStyleSheet(STYLES['body'])
-        self._layout.addWidget(col)
-    
-    # ===================================================================
-    # SCREEN 6 — SOURCE SELECTION
-    # ===================================================================
-    def show_sources(self):
-        self._clear()
-        #self.setStyleSheet(STYLES["body_clear"])
-        self._resize(350, 425)
-
-        sources_layout = QVBoxLayout()
-        sources_layout.setSpacing(4)
-        sources_layout.setContentsMargins(10, 10, 10, 10)
-        sources_layout.addWidget(UIFactory.label("Select Source:", font_size=12, font_weight='bold', 
-                                                 color='rgba(200, 200, 200, 1)', align='center'))
-
-        col, layout = UIFactory.button_column(
-            [
-                ("", lambda: self._emit_clicked("DarwinBox_source"), "payroll_button", ("assets/darwinbox.png", 100, 50)),
-                ("", lambda: self._emit_clicked("Sprout_source"), "payroll_button", ("assets/sprout.png", 80, 40)),
-                ("Home", lambda: self._emit_clicked("home"), "payroll_button"),
-            ],
-            spacing=12,
-            parent=self
-
-        )
-
-        layout.addStretch()
-        sources_layout.addWidget(col)
-        self._layout.addLayout(sources_layout)
-
-    # ===================================================================
-    # SCREEN 7 — FEATURE LIST
-    # ===================================================================
-    def show_darwin_features(self):
-        self._clear()
-        #self.setStyleSheet(STYLES["body_clear"])
-        self._resize(350, 450)
-
-        darwin_feat_layout = QVBoxLayout()
-        darwin_feat_layout.setSpacing(4)
-        darwin_feat_layout.setContentsMargins(10, 20, 10, 10)
-        darwin_feat_layout.addWidget(UIFactory.image("assets/darwinbox.png", 150, 150))
-        darwin_feat_layout.addSpacing(3)
-
-        col, layout = UIFactory.button_column(
-            [
-                ("Payroll",  lambda: self._emit_clicked("payroll_feature"),  "payroll_button"),
-                ("Checker",  lambda: self._emit_clicked("checker_feature"),  "button"),
-                ("Home",     lambda: self._emit_clicked("home"), "button"),
-            ],
-            parent=self
-
-        )
-
-        layout.addStretch()
-        darwin_feat_layout.addWidget(col)
-        self._layout.addLayout(darwin_feat_layout)
-
-    def _horizontal_menu_darwin_features(self):
-        self._layout.setSpacing(8)
-        self.setStyleSheet(STYLES["body_clear"])
-
-        col, layout = UIFactory.button_row(
-            [
-                ("Payroll",  lambda: self._emit_clicked("payroll_feature"),  "payroll_button"),
-                ("Checker",  lambda: self._emit_clicked("checker_feature"),  "button"),
-                ("Home",     lambda: self._emit_clicked("home"), "button"),
-            ],
-            width=120,
-            parent=self
-        )
-        layout.addWidget(UIFactory.image("assets/darwinbox_icon.png", 30, 30))
-        col.setStyleSheet(STYLES['body'])
-        self._layout.addWidget(col)
-
-    def show_sprout_features(self):
-        self._clear()
-        self._resize(350, 455)
-
-        sprout_feat_layout = QVBoxLayout()
-        sprout_feat_layout.setSpacing(4)
-        sprout_feat_layout.setContentsMargins(10, 20, 10, 10)
-        sprout_feat_layout.addWidget(UIFactory.image("assets/sprout.png", 120, 120))
-        sprout_feat_layout.addSpacing(3)
-
-
-        col, layout = UIFactory.button_column(
-            [
-                ("Payroll",  lambda: self._emit_clicked("payroll_feature"),  "payroll_button"),
-                ("Checker",  lambda: self._emit_clicked("checker_feature"),  "button"),
-                ("Home",     lambda: self._emit_clicked("home"), "button"),
-            ],
-            parent=self
-
-        )
-
-        layout.addStretch()
-        sprout_feat_layout.addWidget(col)
-        self._layout.addLayout(sprout_feat_layout)
-
-    def _horizontal_menu_sprout_features(self):
-        self._layout.setSpacing(8)
-        self.setStyleSheet(STYLES["body_clear"])
-
-        col, layout = UIFactory.button_row(
-            [
-                ("Payroll",  lambda: self._emit_clicked("payroll_feature"),  "payroll_button"),
-                ("Checker",  lambda: self._emit_clicked("checker_feature"),  "button"),
-                ("Home",     lambda: self._emit_clicked("home"), "button"),
-            ],
-            width=120,
-            parent=self
-        )
-        layout.addWidget(UIFactory.image("assets/sprout_icon.png", 30, 30))
-        col.setStyleSheet(STYLES['body'])
-        self._layout.addWidget(col)
-
-    # ===================================================================
-    # SCREEN 8 — TOOL SELECTION
-    # ===================================================================
-    def show_tools(self):
-        self._clear()
-        self._resize(350, 450)
-
-        tools_layout = QVBoxLayout()
-        tools_layout.setSpacing(4)
-        tools_layout.setContentsMargins(10, 10, 10, 10)
-        tools_layout.addWidget(UIFactory.label("Select Tool:", font_size=12, font_weight='bold', 
-                                                 color='rgba(200, 200, 200, 1)', align='center'))
-
-        col, layout = UIFactory.button_column(
-            [
-                ("DarwinBox to Sprout", lambda: self._emit_clicked("dbx_to_sprout_tool"), "payroll_button"),
-                ("Attendance Summary",   lambda: self._emit_clicked("attendance_summary_tool"),    "payroll_button"),
-                ("Home",                lambda: self._emit_clicked("home"),  "payroll_button"),
-            ],
-            spacing=12,
+            spacing=8,
             parent=self,
-            con_style_key=STYLES['body_clear']
         )
 
-        layout.addStretch()
-        tools_layout.addWidget(col)
-        self._layout.addLayout(tools_layout)
+        self._error_json = UIFactory.label("", color="red", align="center", link=True)
+        self._error_json.hide()
 
-    def _horizontal_menu_tools(self):
-        self._layout.setSpacing(8)
-        self.setStyleSheet(STYLES["body_clear"])
+        apps_layout.addWidget(apps_col)
+        apps_layout.addWidget(self._error_json)
+        suite_layout.addWidget(apps_con)
 
-        col, layout = UIFactory.button_row(
-            [
-                ("DarwinBox to Sprout", lambda: self._emit_clicked("dbx_to_sprout_tool"), "payroll_button"),
-                ("Attendance Summary",   lambda: self._emit_clicked("attendance_summary_tool"),    "payroll_button"),
-                ("Home",                lambda: self._emit_clicked("home"),  "payroll_button"),
-            ],
-            width=150,
-            parent=self
-        )
-        layout.addStretch()
-        col.setStyleSheet(STYLES['body'])
-        self._layout.addWidget(col)
+        # ── Utility row — flat text links, footer-style ───────────────
+        utility_row1 = QHBoxLayout()
+        utility_row1.setSpacing(18)
+        utility_row1.setContentsMargins(4, 0, 4, 4)
+        utility_row1.addStretch()
+
+        for label, action in [
+            ("Account", "account_util"),
+            ("Check for Updates", "check_update_util"),
+        ]:
+            btn = UIFactory.button(label, lambda _, a=action: self._emit_clicked(a), "")
+            btn.setStyleSheet("link_style")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            utility_row1.addWidget(btn)
+        utility_row1.addStretch()
+
+        utility_row2 = QHBoxLayout()
+        utility_row2.setSpacing(18)
+        utility_row2.setContentsMargins(4, 0, 4, 4)
+        utility_row2.addStretch()
+
+        for label, action in [
+            ("About / Credits", "credits_util"),
+            ("Help / Support", "help_util"),
+        ]:
+            btn = UIFactory.button(label, lambda _, a=action: self._emit_clicked(a), "")
+            btn.setStyleSheet("link_style")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            utility_row2.addWidget(btn)
+        utility_row2.addStretch()
+
+
+        suite_layout.addLayout(utility_row1)
+        suite_layout.addLayout(utility_row2)
+
+        self._layout.addLayout(suite_layout)
+
+    def show_error_config(self, error, config):
+        self._resize(370, 530)
+        if error == "config_error":
+            self._error_json.setText(f"Failed to download the {config.title()} configuration file. ")
+        elif error == "json_error":
+            self._error_json.setText(f"Invalid JSON format. Please check the {config.title()} config file structure. ")
+        self._error_json.show()
 
     # ===================================================================
-    # SCREEN 9 — SETTINGS
+    # ACTIONS ON CLICK
     # ===================================================================
-    def show_settings(self, users, deminimis):
+    def _on_add_user_clicked(self, email):
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self._emit_clicked(['add_user', email])
+
+    # ===================================================================
+    # SCREEN 5.5 — SUITE UTIL SCREEN
+    # ===================================================================
+    def show_account(self, name: str = None, email: str = None):
+        """Suite-level account screen — logged-in identity + logout."""
         self._clear()
-        self._horizontal_main_menu()
+        self.setStyleSheet(STYLES["body_clear"])
+        self._resize(370, 320)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        con = QFrame()
+        con.setStyleSheet(STYLES["standard_container"])
+        con_layout = QVBoxLayout(con)
+        con_layout.setSpacing(6)
+        con_layout.setContentsMargins(12, 12, 12, 12)
+
+        con_layout.addWidget(UIFactory.label("Account", style_key="header_label"))
+        con_layout.addWidget(UIFactory.label(
+            f"{name}\n{email}" if email else "Not signed in",
+            style_key="standard"
+        ))
+
+        col, btn_layout = UIFactory.button_column(
+            [
+                ("Log out", lambda: self._emit_clicked("logout"), "settings_button"),
+                ("Home",    lambda: self._emit_clicked("suite_home"), "payroll_button"),
+            ],
+            spacing=8,
+            parent=self,
+        )
+        btn_layout.addStretch()
+
+        con_layout.addSpacing(6)
+        con_layout.addWidget(col)
+        layout.addWidget(con)
+        layout.addStretch()
+        self._layout.addLayout(layout)
+
+    def show_help(self):
+        """Suite-level help/support placeholder."""
+        self._clear()
+        self.setStyleSheet(STYLES["body_clear"])
+        self._resize(370, 320)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        con = QFrame()
+        con.setStyleSheet(STYLES["standard_container"])
+        con_layout = QVBoxLayout(con)
+        con_layout.setSpacing(6)
+        con_layout.setContentsMargins(12, 12, 12, 12)
+
+        con_layout.addWidget(UIFactory.label("Help / Support", style_key="header_label"))
+        con_layout.addWidget(UIFactory.label(
+            "Ran into an issue? Reach out to the Automation Team or send us a report.",
+            style_key="standard",
+            word_wrap=True
+        ))
+
+        col, btn_layout = UIFactory.button_column(
+            [
+                ("Contact Automation Team", lambda: self._emit_clicked("contact_support"), "settings_button"),
+                ("Home",                    lambda: self._emit_clicked("suite_home"),      "payroll_button"),
+            ],
+            spacing=8,
+            parent=self,
+        )
+        btn_layout.addStretch()
+
+        con_layout.addSpacing(6)
+        con_layout.addWidget(col)
+        layout.addWidget(con)
+        layout.addStretch()
+        self._layout.addLayout(layout)
+
+    # ===================================================================
+    # SCREEN 5 — SUITE ROOT
+    # ===================================================================
+    def show_settings(self, users):
+        self._clear()
         self._layout.setContentsMargins(10, 10, 10, 10)
-        self._resize(530, self.height['settings'])
+        self._resize(530, self.height["settings"])
+
+        self._layout.addWidget(UIFactory.button( "Home",
+            lambda: self._emit_clicked("suite_home"), "payroll_button"
+            )
+        )
 
         content = QFrame()
         content.setObjectName("featureContent")
@@ -777,85 +817,6 @@ class Body(QWidget):
 
         content_layout.addWidget(UIFactory.label("⚙️ Settings", color='white', font_weight="bold", font_size=17))
         content_layout.addSpacing(3)
-
-        # ── Automation Files frame ───────────────────────────────────────────────
-        automation_con = QFrame()
-        automation_con.setStyleSheet(STYLES["standard_container"])
-
-        automation_layout = QVBoxLayout(automation_con)
-        automation_layout.setSpacing(2)
-        automation_layout.setContentsMargins(12, 12, 12, 12)
-
-        automation_layout.addWidget(UIFactory.label("Automation Files", style_key="header_label"))
-        _, btn_row = UIFactory.button_row(
-            [
-                ("Payroll Headers",         lambda: self._emit_clicked("payroll_headers"), "settings_button"),
-                ("Night Differential List", lambda: self._emit_clicked("nd_list"),         "settings_button"),
-            ],
-            spacing=8,
-            margin=(0, 0, 0, 0),
-            use_container=False,
-        )
-
-        automation_layout.addLayout(btn_row)
-        automation_layout.addSpacing(2)
-
-        automation_layout.addWidget(UIFactory.label(
-            "Note: Refresh app after updating Payroll Headers or ND List.",
-            style_key="standard_red",
-            word_wrap=True,
-            align="left"
-        ))
-        content_layout.addWidget(automation_con)
-        content_layout.addSpacing(4)
-
-        # ── Deminimis frame ──────────────────────────────────────────────────────
-        deminimis_con = QFrame()
-        deminimis_con.setStyleSheet(STYLES["standard_container"])
-
-        deminimis_layout = QVBoxLayout(deminimis_con)
-        deminimis_layout.setSpacing(6)
-        deminimis_layout.setContentsMargins(12, 12, 12, 12)
-
-        deminimis_layout.addWidget(UIFactory.label("Deminimis", style_key="header_label"))
-
-        # Label row
-        labels_row = QHBoxLayout()
-        labels_row.setSpacing(8)
-
-        for detail in deminimis:
-            labels_row.addWidget(UIFactory.label(detail, font_weight="bold", color='white'))
-        deminimis_layout.addLayout(labels_row)
-
-        # Input row
-        inputs_row = QHBoxLayout()
-        inputs_row.setSpacing(6)
-        self.deminimis_inputs = {}
-        for detail, val in deminimis.items():
-            inp = UIFactory.input("")
-            inp.setPlaceholderText(str(val))
-            inp.setFixedHeight(30)
-            self.deminimis_inputs[detail] = inp
-            inputs_row.addWidget(inp)
-
-        deminimis_layout.addLayout(inputs_row)
-        deminimis_layout.addSpacing(2)
-
-        self.save_deminimis_btn = UIFactory.button(
-            "Save",
-            lambda: self._on_save_deminimis_clicked(
-                {
-                    detail: inp.text().strip()
-                    for detail, inp in self.deminimis_inputs.items()
-                }
-            ),
-            "settings_button",
-            height=35,
-        )
-
-        deminimis_layout.addWidget(self.save_deminimis_btn)
-        content_layout.addWidget(deminimis_con)
-        content_layout.addSpacing(6)
 
         # ── Users frame ──────────────────────────────────────────────────────────
         users_con = QFrame()
@@ -903,835 +864,17 @@ class Body(QWidget):
         content_layout.addStretch()
 
         # Status labels
-        for key, status in SETTINGS_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
+        self.app_settings_status = UIFactory.label("", align="center", font_size=8)
+        self.app_settings_status.hide()
+        content_layout.addWidget(self.app_settings_status)
 
         self._layout.addWidget(content)
 
-    # ===================================================================
-    # SCREEN 10 — FEATURE VIEWS
-    # ===================================================================
-    def show_payroll_feature(self, required_files, source):
-        self._clear()
-        self.required_files_len = len(required_files)
-
-        if "DarwinBox" in source:
-            self._horizontal_menu_darwin_features()
-        else:
-            self._horizontal_menu_sprout_features()
-
-        self._layout.setContentsMargins(10, 10, 10, 10)
-        self._resize(530, self.height['payroll'] + (self.required_files_len * 10))
-
-        content = QFrame()
-        content.setObjectName("featureContent")
-        content.setStyleSheet(STYLES["feature_content"])
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(8)
-        content_layout.setContentsMargins(10, 10, 10, 10)
-
-        content_layout.addWidget(UIFactory.label("Payroll Automation", color='white', font_weight="bold", font_size=17))
-        content_layout.addWidget(
-            UIFactory.label(
-                "Validates all input files and submits them to Unmand for payroll header validation"
-                "using the formulas defined in the \n Premium Headers Excel. The process applies "
-                "payroll rates, identifies data variations.\n\n"
-                ""
-                "Outputs an Excel file containing the Mapping Table, Checker, and Checking Table,"
-                "along with a TXT file that \nincludes the detailed computation results.",
-                font_size=11, color='white'
+    def show_settings_add_user_status(self, code):
+        self._resize(530, self.height["settings"] + 10)
+        self.app_settings_status.setText(APP_SETTINGS_STATUSES[code])
+        self.app_settings_status.setStyleSheet(
+                f"color: {'#16A34A' if 'success' in code else '#DC2626'};"
+                "font-size: 10px;"
             )
-        )
-        content_layout.addSpacing(6)
-
-        # ── Versioning ──────────────────────────────────────────────
-        versioning_con = QFrame()
-        versioning_con.setStyleSheet(STYLES["standard_container"])
-
-        versioning_layout = QVBoxLayout(versioning_con)
-        versioning_layout.setContentsMargins(12, 12, 12, 12)
-        versioning_layout.setSpacing(6)
-
-        versioning_layout.addWidget(
-            UIFactory.label(
-                "🏷️ Versioning",
-                color="white",
-                font_weight="bold",
-                font_size=15,
-            )
-        )
-
-        versioning_layout.addWidget(
-            UIFactory.label(
-                "Enter the Run ID and Version to resume a previous run, or leave them blank to start a new one.",
-                color="white",
-                font_size=11,
-                padding_bottom=6,
-            )
-        )
-
-        versioning_row = QHBoxLayout()
-        versioning_row.setSpacing(16)
-
-        # Run ID
-        run_id_layout = QVBoxLayout()
-        run_id_layout.setSpacing(4)
-
-        run_id_layout.addWidget(
-            UIFactory.label(
-                "Run ID:",
-                color="white",
-                font_weight="bold",
-            )
-        )
-
-        id_input = UIFactory.input("e.g., 20260422_071827")
-        run_id_layout.addWidget(id_input)
-
-        # Version
-        version_layout = QVBoxLayout()
-        version_layout.setSpacing(4)
-
-        version_layout.addWidget(
-            UIFactory.label(
-                "Version:",
-                color="white",
-                font_weight="bold",
-            )
-        )
-
-        version_input = UIFactory.input("e.g., v1")
-        version_layout.addWidget(version_input)
-
-        # Add columns
-        versioning_row.addLayout(run_id_layout, 1)
-        versioning_row.addSpacing(16)
-        versioning_row.addLayout(version_layout, 1)
-
-        versioning_layout.addLayout(versioning_row)
-
-        # Add to page
-        content_layout.addWidget(versioning_con)
-        content_layout.addSpacing(6)
-
-        # ── Required Files Frame ────────────────────────────────────
-        required_con = QFrame()
-        required_con.setStyleSheet(STYLES["standard_container"])
-
-        required_layout = QVBoxLayout(required_con)
-        required_layout.setContentsMargins(12, 12, 12, 12)
-        required_layout.setSpacing(3)
-
-        required_layout.addWidget(
-            UIFactory.label("🗂️ Required Files", style_key="header_label")
-        )
-
-        # Two-column layout
-        columns = QHBoxLayout()
-        columns.setSpacing(24)
-
-        # Left column - Required Files
-        files_layout = QVBoxLayout()
-        files_layout.setSpacing(1)
-
-        for t in required_files:
-            files_layout.addWidget(
-                UIFactory.label(f"• {t}", font_size=11, color="rgba(200, 200, 200, 1)")
-            )
-
-        # Right column - Notes
-        notes_layout = QVBoxLayout()
-        notes_layout.setSpacing(4)
-        notes_layout.addWidget(UIFactory.label(
-            "Note:\n"
-            "• Headers in Row 1; use Sheet 1.\n"
-            "• File type must be .xlsx\n"
-            "• Sensitivity should be set to Public\n"
-            "• The file should not be password-protected.\n"
-            "• If required, use INTOGREAT[YYYY].\n"
-            "• Total should be at the end row.\n"
-            "• No headers should be the same.\n",
-            style_key="standard_red",
-            word_wrap=True,
-            align="left"
-        ))
-
-        columns.addLayout(files_layout, 1)
-        columns.addLayout(notes_layout, 1)
-
-        required_layout.addLayout(columns)
-
-        content_layout.addWidget(required_con)
-        content_layout.addStretch()
-
-        # ---------------------------------------------------------------
-        # PRIMARY — Upload button (with processing state)
-        # ---------------------------------------------------------------
-        self.payroll_upload_btn = UIFactory.button(
-            "Upload",
-            lambda: self._on_payroll_upload_btn_click(id_input, version_input),
-            "payroll_button"
-        )
-        content_layout.addWidget(self.payroll_upload_btn)
-
-        # ---------------------------------------------------------------
-        # AUX BUTTONS — registered with the dynamic visibility system
-        # ---------------------------------------------------------------
-        payroll_unmand_btn = UIFactory.button(
-            "Send to Unmand",
-            lambda: self._emit_clicked("send_unmand"),
-            "payroll_button"
-        )
-        content_layout.addWidget(payroll_unmand_btn)
-        self._register_aux_button("payroll", "payroll_unmand", payroll_unmand_btn,
-                                  visible_on=["file_success"])
-
-        open_new_btn = UIFactory.button(
-            "Open new headers",
-            lambda: self._emit_clicked("open_new_headers"),
-            "payroll_button"
-        )
-        content_layout.addWidget(open_new_btn)
-        self._register_aux_button("payroll", "open_new_btn", open_new_btn,
-                                  visible_on=["new_headers_error"])
-
-        check_unmand_btn = UIFactory.button(
-            "Check Unmand Status",
-            lambda: self._emit_clicked("check_status"),
-            "payroll_button"
-        )
-        content_layout.addWidget(check_unmand_btn)
-        self._register_aux_button("payroll", "check_unmand_btn", check_unmand_btn,
-                                  visible_on=["unmand_init_success", "unmand_status_pending_error"])
-
-        open_output_btn = UIFactory.button(
-            "Open Output",
-            lambda: self._emit_clicked("open_payroll_ouput"),
-            "payroll_button"
-        )
-        content_layout.addWidget(open_output_btn)
-        self._register_aux_button("payroll", "open_output_btn", open_output_btn,
-                                  visible_on=["unmand_status_success"])
-
-        self._layout.addWidget(content)
-
-    def show_checker_feature(self, source):
-        self._clear()
-
-        if "DarwinBox" in source:
-            self._horizontal_menu_darwin_features()
-        else:
-            self._horizontal_menu_sprout_features()
-
-        self._layout.setContentsMargins(10, 10, 10, 10)
-        self._resize(530, self.height['checker'])
-
-        content = QFrame()
-        content.setObjectName("featureContent")
-        content.setStyleSheet(STYLES["feature_content"])
-
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(8)
-        content_layout.setContentsMargins(10, 10, 10, 10)
-
-        content_layout.addWidget(UIFactory.label("Unmand vs Manual", color='white', font_weight="bold", font_size=17))
-        content_layout.addWidget(
-                UIFactory.label(
-                    "Compares the Unmand output with the Finance Manual Checker using "
-                    "the formulas defined in the Premium Headers Excel.\n\n"
-                    "The automation validates payroll rates, detects data variations, "
-                    "and generates a detailed comparison report.\n\n"
-                    "Output:\n"
-                    "• Excel report with the overall accuracy rate\n"
-                    "• Total number of rows compared\n"
-                    "• Detailed cell-by-cell comparison of both outputs",
-                    font_size=11,
-                    color="white",
-                    word_wrap=True
-                )
-            )
-        content_layout.addSpacing(6)
-
-       # ── Required Files Frame ────────────────────────────────────
-        required_con = QFrame()
-        required_con.setStyleSheet(STYLES["standard_container"])
-
-        required_layout = QVBoxLayout(required_con)
-        required_layout.setContentsMargins(12, 12, 12, 12)
-        required_layout.setSpacing(8)
-
-        required_layout.addWidget(
-            UIFactory.label("🗂️ Required Files", style_key="header_label")
-        )
-
-        # Two columns
-        columns = QHBoxLayout()
-        columns.setSpacing(32)
-
-        # ── Left Column: Files ──────────────────────────────────────
-        files_layout = QVBoxLayout()
-        files_layout.setSpacing(6)
-
-        for t in ["Manual Checker", "Unmand Automation Output"]:
-            files_layout.addWidget(
-                UIFactory.label(f"• {t}", style_key="standard")
-            )
-
-        files_layout.addStretch()
-
-        # ── Right Column: Notes ─────────────────────────────────────
-        notes_layout = QVBoxLayout()
-        notes_layout.setSpacing(6)
-        notes_layout.addWidget(
-            UIFactory.label(
-                "Note:\n"
-                "• Headers must be in Row 1 (Sheet 1)\n"
-                "• File type must be .xlsx\n"
-                "• Sensitivity must be set to Public.\n"
-                "• File must not be password-protected.\n"
-                "• Use INTOGREAT[YYYY] if required.\n"
-                "• Total must be at the end of each row.",
-                style_key="standard_red",
-                word_wrap=True,
-                align="left"
-            )
-        )
-
-        # Add columns
-        columns.addLayout(files_layout, 1)
-        columns.addLayout(notes_layout, 2)
-
-        required_layout.addLayout(columns)
-
-        content_layout.addWidget(required_con)
-        content_layout.addStretch()
-
-        # ── Action buttons ───────────────────────────────────────────────────────
-        self.checker_upload_btn = UIFactory.button(
-            "Upload",
-            lambda: self._on_checker_upload_btn_click(),
-            "payroll_button"
-        )
-        content_layout.addWidget(self.checker_upload_btn)
-
-        open_output_btn = UIFactory.button(
-            "Open Output",
-            lambda: self._emit_clicked("open_checker_output"),
-            "payroll_button"
-        )
-        content_layout.addWidget(open_output_btn)
-
-        self._register_aux_button("checker", "open_output_btn", open_output_btn,
-                                    visible_on=["validated_success"])
-        
-        # Status labels
-        for key, status in CHECKER_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
-
-        self._layout.addWidget(content)
-
-    # ===================================================================
-    # SCREEN 11 — TOOLS
-    # ===================================================================
-    def show_dbx_to_sprout_tool(self):
-        self._clear()
-        self._horizontal_menu_tools()
-
-        self._layout.setContentsMargins(10, 10, 10, 10)
-        self._resize(530, self.height['dbx_to_sprout'])
-        
-        content = QFrame()
-        content.setObjectName("featureContent")
-        content.setStyleSheet(STYLES["feature_content"])
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(8)
-        content_layout.setContentsMargins(10, 10, 10, 10)
-
-        content_layout.addWidget(UIFactory.label("DarwinBox to Sprout Payroll", color='white', font_weight="bold", font_size=17))
-        content_layout.addWidget(
-            UIFactory.label(
-                "This process extracts data from the DarwinBox Payroll Register, "
-                "converts payroll-related headers into \n standardized time categories, and "
-                "consolidates all records at the employee level.\n\n"
-                "The output provides a unified view of each employee's time and "
-                "payroll-related information for \n reporting, analysis, and downstream processing.",
-                font_size=11, color='white'
-            )
-        )
-        content_layout.addSpacing(6)
-
-        # ── Required Files frame ─────────────────────────────────────────────────
-        required_con = QFrame()
-        required_con.setStyleSheet(STYLES['standard_container'])
-
-        required_layout = QVBoxLayout(required_con)
-        required_layout.setSpacing(4)
-        required_layout.setContentsMargins(12, 12, 12, 12)
-
-        required_layout.addWidget(UIFactory.label("🗂️ Required Files:", style_key="header_label"))
-        for t in ["DarwinBox Payroll Register"]:
-            required_layout.addWidget(UIFactory.label("• " + t, style_key="standard"))
-
-        required_layout.addSpacing(6)
-        required_layout.addWidget(UIFactory.label(
-            "Note:\n"
-            "• Headers in Row 1; use Sheet 1.\n"
-            "• File type must be .xlsx\n"
-            "• Sensitivity should be set to Public\n"
-            "• The file should not be password-protected.\n"
-            "• If required, use INTOGREAT[YYYY].\n"
-            "• No headers should be the same.",
-            style_key="standard_red",
-            word_wrap=True,
-            align="left"
-        ))
-        content_layout.addWidget(required_con)
-        content_layout.addStretch()
-
-        # ── Action buttons ───────────────────────────────────────────────────────
-        self.dbx_to_sprout_upload_btn = UIFactory.button(
-            "Upload",
-            lambda: self._on_dbx_to_sprout_upload_btn_click(),
-            "payroll_button"
-        )
-        content_layout.addWidget(self.dbx_to_sprout_upload_btn)
-
-        open_output_btn = UIFactory.button(
-            "Open Output",
-            lambda: self._emit_clicked("open_dbx_to_sprout_output"),
-            "payroll_button"
-        )
-        content_layout.addWidget(open_output_btn)
-
-        self._register_aux_button("checker", "open_output_btn", open_output_btn,
-                                    visible_on=["converted_success"])
-        
-        # Status labels
-        for key, status in DBX_TO_SPROUT_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
-
-        self._layout.addWidget(content)
-
-    def show_attendance_summary_tool(self):
-        self._clear()
-        self._horizontal_menu_tools()
-        self._layout.setContentsMargins(10, 10, 10, 10)
-
-        self._resize(530, self.height['att_summary'])
-        content = QFrame()
-        content.setObjectName("featureContent")
-        content.setStyleSheet(STYLES["feature_content"])
-
-        content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(8)  # was 1 — gave everything a cramped feel
-        content_layout.setContentsMargins(10, 10, 10, 10)
-
-        content_layout.addWidget(UIFactory.label("DarwinBox Attendance Summary", color='white', font_weight="bold", font_size=17))
-        content_layout.addWidget(
-            UIFactory.label(
-                "This process extracts data from the DarwinBox Attendance Report, "
-                "filtering the records based on cut-off periods \n and calculating "
-                "attendance metrics, including present days, absences, unpaid leave, lates, and early-outs.\n\n"
-                "Generates summarized reports to support payroll processing and attendance monitoring.",
-                font_size=11, color='white'
-            )
-        )
-        content_layout.addSpacing(6)
-
-        # ── Attendance Period frame ──────────────────────────────────────────────
-        attendance_con = QFrame()
-        attendance_con.setStyleSheet(STYLES['standard_container'])
-
-        attendance_layout = QVBoxLayout(attendance_con)
-        attendance_layout.setSpacing(6)
-        attendance_layout.setContentsMargins(12, 12, 12, 12)
-
-        attendance_layout.addWidget(UIFactory.label("📅 Attendance Period", color='white', font_weight="bold", font_size=15))
-        attendance_layout.addWidget(UIFactory.label(
-            "Select the attendance period to include in the report.",
-            font_size=11, color="white", padding_bottom=5
-        ))
-
-        # Date row: [Start] → [Cutoff]
-        date_picker_row = QHBoxLayout()
-        date_picker_row.setSpacing(0)
-
-        # Start date
-        start_layout = QVBoxLayout()
-        start_layout.setSpacing(4)
-
-        start_layout.addWidget(UIFactory.label("Start Date:", font_weight="bold", color='white'))
-        self.start_date = UIFactory.date_picker(
-            default_date=QDate.currentDate(),
-            width=90,
-            style_key='date_picker'
-        )
-        start_layout.addWidget(self.start_date)
-        date_picker_row.addLayout(start_layout)
-
-        # Arrow in between
-        arrow_label = UIFactory.label("➜", color='white', font_size=18)
-        arrow_label.setAlignment(Qt.AlignmentFlag.AlignBottom)
-        arrow_label.setContentsMargins(10, 0, 10, 4)  # nudge arrow to sit level with the pickers
-        date_picker_row.addWidget(arrow_label)
-
-        # Cutoff date
-        cutoff_layout = QVBoxLayout()
-        cutoff_layout.setSpacing(4)
-
-        cutoff_layout.addWidget(UIFactory.label("Cutoff Date:", font_weight="bold", color='white'))
-        self.cutoff = UIFactory.date_picker(
-            default_date=QDate.currentDate(),
-            width=90,
-            style_key='date_picker'
-        )
-
-        cutoff_layout.addWidget(self.cutoff)
-        date_picker_row.addLayout(cutoff_layout)
-        date_picker_row.addStretch()  # keep pickers left-anchored
-        attendance_layout.addLayout(date_picker_row)
-        content_layout.addWidget(attendance_con)
-        content_layout.addSpacing(6)
-
-        # ── Required Files frame ─────────────────────────────────────────────────
-        required_con = QFrame()
-        required_con.setStyleSheet(STYLES['standard_container'])
-        required_layout = QVBoxLayout(required_con)
-        required_layout.setSpacing(4)
-        required_layout.setContentsMargins(12, 12, 12, 12)
-
-        required_layout.addWidget(UIFactory.label("🗂️ Required Files:", color='white', font_weight="bold", font_size=15, padding_bottom=5))
-        for t in ["DarwinBox Attendance Report"]:
-            required_layout.addWidget(UIFactory.label("• " + t, style_key='standard'))
-
-        required_layout.addSpacing(4)
-        required_layout.addWidget(UIFactory.label(
-            "Note:\n"
-            "• Headers in Row 1; use Sheet 1.\n"
-            "• File type must be .xlsx\n"
-            "• Sensitivity should be set to Public\n"
-            "• The file should not be password-protected.\n"
-            "• If required, use INTOGREAT[YYYY].\n"
-            "• No headers should be the same.",
-            style_key="standard_red",
-            word_wrap=True,
-            align="left"
-        ))
-
-        content_layout.addWidget(required_con)
-        content_layout.addStretch()
-        
-        # ── Action buttons ───────────────────────────────────────────────────────
-        self.att_summary_upload_btn = UIFactory.button(
-            "Upload",
-            lambda: self._on_attendance_summary_upload_btn_click(),
-            "payroll_button"
-        )
-        content_layout.addWidget(self.att_summary_upload_btn)
-
-        open_output_btn = UIFactory.button(
-            "Open Output",
-            lambda: self._emit_clicked("open_att_summary_output"),
-            "payroll_button"
-        )
-        content_layout.addWidget(open_output_btn)
-
-        self._register_aux_button("checker", "open_output_btn", open_output_btn,
-                                    visible_on=["summarized_success"])
-        
-        # Status labels
-        for key, status in ATTENDANCE_SUMMARY.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
-
-        self._layout.addWidget(content)
-    # ===================================================================
-    # ACTIONS ON CLICK
-    # ===================================================================
-    
-    def _on_payroll_upload_btn_click(self, id_input, version_input):
-        """Handle Upload button click: switch to processing state, then emit."""
-        self._set_btn_processing(self.payroll_upload_btn, "Processing...")
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked(["payroll_upload", id_input.text().strip(), version_input.text().strip()])
-
-    def _on_checker_upload_btn_click(self):
-        self._set_btn_processing(self.checker_upload_btn, "Processing...")
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked("checker_upload")
-
-    def _on_save_deminimis_clicked(self, deminimis):
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked(['save_deminimis', deminimis])
-
-    def _on_add_user_clicked(self, email):
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked(['add_user', email])
-
-    def _on_dbx_to_sprout_upload_btn_click(self):
-        self._set_btn_processing(self.dbx_to_sprout_upload_btn, "Processing...")
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked("dbx_to_sprout_upload")
-
-    def _on_attendance_summary_upload_btn_click(self):
-        self._set_btn_processing(self.att_summary_upload_btn, "Processing...")
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked("att_summary_upload")
-
-    # ===================================================================
-    # STATUS UI STATE CHANGES
-    # ===================================================================
-
-    def _show_status(self, category, codes, statuses, button_statuses, upload_btn, height, payroll_files):
-        """Render status labels and reveal aux buttons."""
-        result_count = 0
-
-
-        self._hide_statuses()
-
-        for code in codes:
-
-            # Parse incoming status code
-            file_name, status_code = parse_status_code(code)
-
-            # Resolve status message
-            message_template = statuses.get(status_code, status_code)
-            message = message_template.format(file_name=file_name or "")
-
-            result_count += 1
-
-            # Create status label
-            stat = UIFactory.label(
-                message,
-                color="red" if "error" in status_code else "green",
-                align="center",
-                selectable=True
-            )
-
-            # Store and render status
-            self.statuses[category][code] = stat
-            stat.show()
-            self._layout.addWidget(stat)
-
-            # Reveal any aux buttons triggered by status
-            if not category == "settings":
-                self._show_aux_buttons_for(category, status_code)
-
-            # Extra spacing for visible buttons
-            if status_code in button_statuses:
-                result_count += 2
-
-        # Resize window to fit new content
-        self._resize(530, height + ((result_count + payroll_files) * 10))
-
-        # Restore upload button state
-        if not category == "settings" and not status_code == "file_success":
-            self._set_btn_default(upload_btn)
-
-    # ===================================================================
-    # PAYROLL UI STATE CHANGES
-    # ===================================================================
-
-    def show_payroll_status(self, codes):
-
-        # Remove the shared processing progress widgets if they exist
-        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
-            widget = getattr(self, attr, None)
-            if widget is not None:
-                self._layout.removeWidget(widget)
-                widget.deleteLater()
-                setattr(self, attr, None)
-
-        self._show_status(
-            category="payroll",
-            codes=codes,
-            statuses=PAYROLL_STATUSES,
-            button_statuses={
-                "new_headers_error",
-                "file_success",
-                "unmand_init_success",
-                "unmand_status_pending_error",
-                "unmand_status_success"
-            },
-            upload_btn=self.payroll_upload_btn,
-            height=self.height['payroll'] + 15,
-            payroll_files=self.required_files_len
-        )
-
-    # ===================================================================
-    # CHECKER UI STATE CHANGES
-    # ===================================================================
-
-    def show_checker_status(self, codes):
-
-        # Remove the shared processing progress widgets if they exist
-        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
-            widget = getattr(self, attr, None)
-            if widget is not None:
-                self._layout.removeWidget(widget)
-                widget.deleteLater()
-                setattr(self, attr, None)
-
-        self._show_status(
-            category="checker",
-            codes=codes,
-            statuses=CHECKER_STATUSES,
-            button_statuses={
-                "validated_success"
-            },
-            upload_btn=self.checker_upload_btn,
-            height=self.height['checker'],
-            payroll_files=0
-        )
-
-    # ===================================================================
-    # SETTINGS UI STATE CHANGES
-    # ===================================================================
-
-    def show_settings_add_user_status(self, codes):
-
-        self._show_status(
-            category="settings",
-            codes=codes,
-            statuses=SETTINGS_STATUSES,
-            button_statuses={
-                "settings_saved_success"
-            },
-            upload_btn=self.add_user_btn,
-            height=self.height['settings'],
-            payroll_files=0
-        )
-
-    def show_settings_save_deminimis_status(self, codes):
-
-        self._show_status(
-            category="settings",
-            codes=codes,
-            statuses=SETTINGS_STATUSES,
-            button_statuses={
-                "settings_saved_success"
-            },
-            upload_btn=self.save_deminimis_btn,
-            height=self.height['settings'],
-            payroll_files=0
-        )
-
-    # ===================================================================
-    # ADITIONAL TOOLS UI STATE CHANGES
-    # ===================================================================
-
-    def show_dbx_to_sprout_status(self, codes):
-
-        # Remove the shared processing progress widgets if they exist
-        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
-            widget = getattr(self, attr, None)
-            if widget is not None:
-                self._layout.removeWidget(widget)
-                widget.deleteLater()
-                setattr(self, attr, None)
-
-        self._show_status(
-            category="checker",
-            codes=codes,
-            statuses=DBX_TO_SPROUT_STATUSES,
-            button_statuses={
-                "converted_success"
-            },
-            upload_btn=self.dbx_to_sprout_upload_btn,
-            height=self.height['dbx_to_sprout'],
-            payroll_files=0
-        )
-
-    def show_attendance_summary_status(self, codes):
-
-        # Remove the shared processing progress widgets if they exist
-        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
-            widget = getattr(self, attr, None)
-            if widget is not None:
-                self._layout.removeWidget(widget)
-                widget.deleteLater()
-                setattr(self, attr, None)
-
-        self._show_status(
-            category="checker",
-            codes=codes,
-            statuses=ATTENDANCE_SUMMARY,
-            button_statuses={
-                "summarized_success"
-            },
-            upload_btn=self.att_summary_upload_btn,
-            height=self.height['att_summary'],
-            payroll_files=0
-        )
-
-    # ===================================================================
-    # PROCESSING PROGRESS BAR
-    # ===================================================================
-
-    def show_processing_progress(self, title: str = "Processing…", key: str = "payroll"):
-        """
-        Render a generic progress bar while a background worker runs.
-        Replaces any previous progress widgets. Call show_*_status() to
-        tear it down and show results.
-
-        Parameters
-        ----------
-        title : str
-            Short label shown above the progress bar (e.g. "Converting…").
-        """
-        self._hide_statuses()
-        self._resize(530, self.height[key] + 80)
-
-        self.processing_status_label = UIFactory.label(
-            title,
-            style_key="standard",
-            align="center",
-            word_wrap=True,
-        )
-        self._layout.addWidget(self.processing_status_label)
-
-        self.processing_percent_label = UIFactory.label(
-            "0%",
-            style_key="header_label",
-            align="center",
-        )
-        self._layout.addWidget(self.processing_percent_label)
-
-        self.processing_progress = QProgressBar()
-        self.processing_progress.setRange(0, 100)
-        self.processing_progress.setValue(0)
-        self.processing_progress.setFixedHeight(3)
-        self.processing_progress.setStyleSheet(STYLES["progress_bar"])
-        self.processing_progress.setTextVisible(False)
-        self._layout.addWidget(self.processing_progress)
-
-    def update_processing_progress(self, percent: int, message: str):
-        """
-        Update the shared processing progress bar and labels.
-        Called from Orchestrator via the worker's progress signal.
-
-        Parameters
-        ----------
-        percent : int   0–100
-        message : str   Current stage label
-        """
-        if hasattr(self, "processing_progress") and self.processing_progress:
-            self.processing_progress.setValue(percent)
-        if hasattr(self, "processing_percent_label") and self.processing_percent_label:
-            self.processing_percent_label.setText(f"{percent}%")
-        if hasattr(self, "processing_status_label") and self.processing_status_label:
-            self.processing_status_label.setText(message)
-
+        self.app_settings_status.show()

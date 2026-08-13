@@ -19,14 +19,14 @@ try:
 except ImportError:
     keyring = None
 
-REG_PATH        = r"SOFTWARE\Intogreat\PayrollAutomation"
+REG_PATH        = r"SOFTWARE\Intogreat\FinanceSuite"
 REG_PARENT      = r"SOFTWARE\Intogreat"
-KEYRING_SERVICE = "PayrollAutomation"
+KEYRING_SERVICE = "FinanceSuite"
 SECRET_KEYS     = ["CLIENT_ID", "TENANT_ID"]
 
 
 def main():
-    print("\nPayroll Automation — Removing machine configuration...\n")
+    print("\nFinance Suite — Removing machine configuration...\n")
 
     if not ctypes.windll.shell32.IsUserAnAdmin():
         print("ERROR: Not running as admin")

@@ -3,7 +3,7 @@ app_config.py — unified config reader for dev and production.
 
 In production (packed .exe), all values come from the OS:
     - Secrets (CLIENT_ID, TENANT_ID) → Windows Credential Manager via keyring
-    - Everything else                → Windows Registry under HKLM\SOFTWARE\Intogreat\PayrollAutomation
+    - Everything else                → Windows Registry under HKLM\SOFTWARE\Intogreat\FinanceSuite
 
 In development, both fall back to .env / environment variables so the
 workflow stays the same as before. You don't need to touch the registry
@@ -37,10 +37,10 @@ ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 ENV_VALUES = dotenv_values(ENV_PATH)
 
 # Registry path written by the Inno Setup installer
-_REG_PATH = r"SOFTWARE\Intogreat\PayrollAutomation"
+_REG_PATH = r"SOFTWARE\Intogreat\FinanceSuite"
 
 # Keyring service name — matches what setup_helper.py writes
-_KEYRING_SERVICE = "PayrollAutomation"
+_KEYRING_SERVICE = "FinanceSuite"
 
 # Keys that are treated as secrets and stored in Credential Manager.
 # Everything else goes in the registry.

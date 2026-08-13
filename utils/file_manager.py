@@ -29,72 +29,112 @@ from services.sharepoint_service import SharePointService
 
 class FileManager:
 
-    def __init__(self, log, managed_folders: list):
-
+    def __init__(self, log):
         self.log             = log
         self.sp_base_url     = get("SP_BASE_URL", "")
-        self.managed_folders = managed_folders
+        self.exclude_folder  = ["archive", "auth"]
         self._data_root      = os.path.join(app_data_path(), "data")
         self._archive_root   = os.path.join(self._data_root, "archive")
 
-        self.log.info(f"FileManager: Ready | folders={managed_folders} root={self._data_root}")
+        self.log.info(
+            f"FileManager: Ready | exclude={self.exclude_folder} "
+            f"root={self._data_root}"
+        )
+
 
     # -------------------------------------------------------------------------
     # 1. SORT AND ARCHIVE
 
     def sort_and_archive(self) -> dict:
         """
-        Moves yesterday's (and older) files into the archive tree.
-        Returns a count dict: {moved, skipped, failed}.
+        Recursively moves yesterday's (and older) files into the archive tree.
+
+        The configured exclude folder is never processed.
+
+        The original directory structure is preserved under:
+
+            archive/YYYY/MM/DD/<relative path>
+
+        Returns:
+            {
+                "moved": int,
+                "skipped": int,
+                "failed": int
+            }
         """
         self.log.section("FILE ARCHIVE")
         self.log.info("FileManager: Starting archive pass")
 
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        counts    = {"moved": 0, "skipped": 0, "failed": 0}
+        today = datetime.datetime.now().date()
 
-        for folder_name in self.managed_folders:
-            folder_path = os.path.join(self._data_root, folder_name)
+        counts = {
+            "moved": 0,
+            "skipped": 0,
+            "failed": 0,
+        }
 
-            if not os.path.exists(folder_path):
-                self.log.info(f"FileManager: Folder missing, skipping | {folder_name}")
-                continue
+        if not os.path.exists(self._data_root):
+            self.log.info(
+                f"FileManager: Data root missing | {self._data_root}"
+            )
+            return counts
 
-            self.log.info(f"FileManager: Scanning | {folder_name}")
+        for root, dirs, files in os.walk(self._data_root):
+            # Prevent the archive itself from being scanned.
+            dirs[:] = [
+                directory
+                for directory in dirs
+                if directory not in 
+                    self.exclude_folder or directory
+                    and directory != os.path.basename(self._archive_root)
+            ]
 
-            for file_name in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, file_name)
-
-                if not os.path.isfile(file_path):
-                    continue
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
 
                 file_date = self._parse_file_date(file_name)
 
                 if file_date is None:
-                    # No embedded timestamp — leave it alone
-                    self.log.debug(f"FileManager: No date in filename, skipping | {file_name}")
+                    self.log.debug(
+                        f"FileManager: No date in filename, skipping | {file_name}"
+                    )
                     counts["skipped"] += 1
                     continue
 
-                if file_date.strftime("%Y-%m-%d") == today_str:
+                if file_date.date() == today:
                     counts["skipped"] += 1
                     continue
 
+                # Path relative to data root.
+                relative_dir = os.path.relpath(root, self._data_root)
+
+                # Preserve original folder tree inside archive.
                 target_dir = os.path.join(
                     self._archive_root,
                     file_date.strftime("%Y"),
                     file_date.strftime("%m"),
                     file_date.strftime("%d"),
-                    folder_name,
+                    relative_dir,
                 )
-                moved = self._move_file(file_path, target_dir, file_name)
+
+                moved = self._move_file(
+                    file_path,
+                    target_dir,
+                    file_name,
+                )
+
                 counts["moved" if moved else "failed"] += 1
 
         self.log.result(
             step="sort_and_archive",
             success=(counts["failed"] == 0),
-            detail=f"moved={counts['moved']} skipped={counts['skipped']} failed={counts['failed']}",
+            detail=(
+                f"moved={counts['moved']} "
+                f"skipped={counts['skipped']} "
+                f"failed={counts['failed']}"
+            ),
         )
+
         return counts
 
     # -------------------------------------------------------------------------
@@ -117,7 +157,7 @@ class FileManager:
             self.log.warning("FileManager: No token in state — skipping")
             return False
 
-        config     = state.get("config") or {}
+        config     = state.get("app_config") or {}
         log_folder = config.get("log_folder")
         if not log_folder:
             self.log.warning("FileManager: log_folder missing from config — skipping")
