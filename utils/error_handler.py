@@ -18,7 +18,6 @@ Note: sys.excepthook only catches exceptions on the main thread. Worker thread
 exceptions (e.g. LoginWorker) need to be handled inside their run() method.
 """
 
-import os
 import sys
 import traceback
 from datetime import datetime
@@ -75,7 +74,7 @@ def _maybe_report(log, state, exc_type, exc_value, tb_str: str):
         log.warning("ErrorHandler: No state yet — skipping Teams report")
         return
 
-    config = state.get("config")
+    config = state.get("app_config")
     if not config:
         log.warning("ErrorHandler: Config not loaded — skipping Teams report")
         return

@@ -187,6 +187,7 @@ class Orchestrator:
             "logged_in":     False,
             "email":         None,
             "name":          None,
+            "user_details":  None,
             "token":         None,
             "app_config":    None,
             "billing_config":    None,
@@ -483,6 +484,9 @@ class Orchestrator:
             elif action == "logout":
                 self.log.info("Orchestrator: Logout triggered")
                 self.state["logged_in"] = False
+
+                msal_loc = app_data_path() / "data" / "auth" / "msal" 
+                self._file_manager.delete_folder(msal_loc)
                 self.start()
                 return
 
@@ -514,9 +518,8 @@ class Orchestrator:
         self.log.event("Header button clicked", btn=btn)
 
         if btn == "close":
-            self.log.info("Orchestrator: Close triggered — uploading log and closing")
+            self.log.info("Orchestrator: Close triggered")
             self.main_window.close()
-            self._file_manager.upload_log(self.state)
 
         elif btn == "minimized":
             self.log.info("Orchestrator: Minimise triggered")
@@ -594,7 +597,7 @@ class Orchestrator:
         self.log.warning(f"Orchestrator: Login failed | error={error}")
         self.body.update_login_form("login_error", error)
 
-    def _on_login_complete(self, email: str, name: str, token: str):
+    def _on_login_complete(self, email: str, name: str, token: str, role: str, photo):
         """
         Handle a successful login.
 
@@ -604,9 +607,10 @@ class Orchestrator:
         self.log.info(f"Orchestrator: Login complete | name={name} email={email}")
 
         self.state.update({
-            "email":     email,
-            "name":      name,
-            "token":     token,
+            "email":        email,
+            "name":         name,
+            "token":        token,
+            "user_details": (role, photo),
             "logged_in": True,
         })
 
@@ -814,7 +818,7 @@ class Orchestrator:
 
         if clean_util == "account":
             self._nav_override = ["Home", "Account"]
-            self.body.show_account(self.state.get("name"), self.state.get("email"))
+            self.body.show_account(self.state.get("name"), self.state.get("email"), self.state.get("user_details"))
         elif clean_util == "check_update":
             self._check_for_update()
         elif clean_util == "credits":

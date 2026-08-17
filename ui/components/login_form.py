@@ -11,6 +11,8 @@ Exposes:
 """
 
 import webbrowser
+from urllib.parse import quote
+
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
 
@@ -48,20 +50,40 @@ class LoginForm(QWidget):
         self._device_code_label.hide()
 
         # --- Login button ---
-        self._login_btn = UIFactory.button("Log in", self._on_login_btn_click, "payroll_button")
+        self._login_btn = UIFactory.button("Log in", self._on_login_btn_click, "payroll_button")# --- Access request ---
+
+        subject = "Finance Suite Access Request"
+
+        body = """Hi Finance Team,
+
+        I would like to request access to Intogreat's Finance Suite.
+
+        Name:
+        Email:
+
+        Thank you.
+        """
+        mailto = (
+            "mailto:i2gfinance@intogreatsolutions.com"
+            f"?subject={quote(subject)}"
+            f"&body={quote(body)}"
+        )
+
+        self._request_access = UIFactory.label(
+            f'<style>'
+            f'a {{ color:#6AAFA7; text-decoration:underline; }}'
+            f'a:hover {{ color:#8AC8C0; }}'
+            f'</style>'
+            f'<a href="{mailto}">No access yet? Request access</a>',
+            align="center",
+            link=True,
+            richtext=True
+        )
 
         # --- Error labels (hidden until needed) ---
-        self._error_login = UIFactory.label("", color="red", align="center", selectable=True)
-        self._error_login.hide()
+        self._error= UIFactory.label("", color="red", align="center", selectable=True)
+        self._error.hide()
 
-        self._error_download = UIFactory.label("", color="red", align="center", link=True)
-        self._error_download.hide()
-
-        self._error_json = UIFactory.label("", color="red", align="center", link=True)
-        self._error_json.hide()
-
-        self._restricted_user = UIFactory.label("", color="red", align="center", selectable=True)
-        self._restricted_user.hide()
 
         # --- Assemble ---
         layout.addStretch()
@@ -70,10 +92,8 @@ class LoginForm(QWidget):
         layout.addWidget(self._device_code_label)
         layout.addStretch(10)
         layout.addWidget(self._login_btn)
-        layout.addWidget(self._error_login)
-        layout.addWidget(self._error_download)
-        layout.addWidget(self._error_json)
-        layout.addWidget(self._restricted_user)
+        layout.addWidget(self._request_access)
+        layout.addWidget(self._error)
 
         layout.addStretch()
 
@@ -91,8 +111,8 @@ class LoginForm(QWidget):
 
     def show_error_login(self, error):
         self._reset_login_btn()
-        self._error_login.setText(str(error))
-        self._error_login.show()
+        self._error.setText(str(error))
+        self._error.show()
 
     def show_error_download(self):
         self._reset_login_btn()
@@ -105,17 +125,17 @@ class LoginForm(QWidget):
 
     def show_error_json(self):
         self._reset_login_btn()
-        self._error_json.setText(
+        self._error.setText(
             "Invalid JSON format. Please check the file structure. "
             f'<a href="mailto:{self._support_email}?subject=JSON Format Error">'
             "Contact Support</a>"
         )
-        self._error_json.show()
+        self._error.show()
 
     def show_restricted_user(self):
         self._reset_login_btn()
-        self._restricted_user.setText('This user account is not authorized to access the system.')
-        self._restricted_user.show()
+        self._error.setText('This user account is not authorized to access the system.')
+        self._error.show()
 
     def _on_login_btn_click(self):
         self._login_btn.setText("Logging in...")

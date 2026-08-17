@@ -303,3 +303,22 @@ class FileManager:
         
         candidates.sort(key=lambda pair: pair[0])
         return candidates[-1][1]   # latest timestamp for today
+
+    def delete_folder(self, loc: str) -> bool:
+        """Deletes a folder and all of its contents."""
+        try:
+            if not os.path.isdir(loc):
+                self.log.warning(f"FileManager: Folder not found — {loc}")
+                return False
+
+            shutil.rmtree(loc)
+
+            self.log.info(f"FileManager: Folder deleted — {loc}")
+            return True
+
+        except Exception as e:
+            self.log.warning(
+                f"FileManager: Failed to delete folder — {loc} | {e}",
+                error=e
+            )
+            return False

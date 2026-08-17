@@ -94,7 +94,7 @@ class Body(QWidget):
         }
 
         self.height = {
-            "settings": 800,
+            "settings": 850,
             "excel_locker_single": 670,
             "excel_locker_multiple": 750,
         }
@@ -793,11 +793,11 @@ class Body(QWidget):
     # ===================================================================
     # SCREEN 5.5 — SUITE UTIL SCREEN
     # ===================================================================
-    def show_account(self, name: str = None, email: str = None):
+    def show_account(self, name: str = None, email: str = None, user_details: tuple = (None, None)):
         """Suite-level account screen — logged-in identity + logout."""
         self._clear()
         self.setStyleSheet(STYLES["body_clear"])
-        self._resize(370, 320)
+        self._resize(370, 650)
 
         layout = QVBoxLayout()
         layout.setSpacing(10)
@@ -805,30 +805,108 @@ class Body(QWidget):
 
         con = QFrame()
         con.setStyleSheet(STYLES["standard_container"])
+
         con_layout = QVBoxLayout(con)
         con_layout.setSpacing(6)
-        con_layout.setContentsMargins(12, 12, 12, 12)
+        con_layout.setContentsMargins(16, 16, 16, 16)
 
-        con_layout.addWidget(UIFactory.label("Account", style_key="header_label"))
-        con_layout.addWidget(UIFactory.label(
-            f"{name}\n{email}" if email else "Not signed in",
-            style_key="standard"
-        ))
+        role, photo = user_details
 
+        # Header
+        con_layout.addWidget(
+            UIFactory.label(
+                "Account",
+                style_key="header_label",
+                align="center"
+            )
+        )
+
+        # ── Profile photo ───────────────────────────────────────────────
+        photo_label = QLabel()
+        photo_label.setFixedSize(80, 80)
+        photo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        if photo:
+            pixmap = QPixmap(photo)
+            if not pixmap.isNull():
+                pixmap = pixmap.scaled(
+                    80,
+                    80,
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                photo_label.setPixmap(pixmap)
+        else:
+            photo_label.setText("👤")
+            photo_label.setStyleSheet(
+                "font-size: 36px;"
+                "background-color: #E5E7EB;"
+                "border-radius: 40px;"
+            )
+
+        photo_row = QHBoxLayout()
+        photo_row.addStretch()
+        photo_row.addWidget(photo_label)
+        photo_row.addStretch()
+
+        con_layout.addLayout(photo_row)
+        con_layout.addSpacing(6)
+
+        # ── Name ────────────────────────────────────────────────────────
+        con_layout.addWidget(
+            UIFactory.label(
+                name or "Unknown User",
+                align="center",
+                font_weight="bold",
+                font_size=14,
+                color="white"
+            )
+        )
+
+        # ── Role ────────────────────────────────────────────────────────
+        con_layout.addWidget(
+            UIFactory.label(
+                role or "User",
+                align="center",
+                font_size=10,
+                color="#A0AEC0"
+            )
+        )
+
+        # ── Email ───────────────────────────────────────────────────────
+        con_layout.addWidget(
+            UIFactory.label(
+                email or "No email available",
+                align="center",
+                font_size=9,
+                color="#A0AEC0"
+            )
+        )
+
+        # ── Buttons ─────────────────────────────────────────────────────
         col, btn_layout = UIFactory.button_column(
             [
-                ("Log out", lambda: self._emit_clicked("logout"), "settings_button"),
-                ("Home",    lambda: self._emit_clicked("suite_home"), "payroll_button"),
+                (
+                    "Log out",
+                    lambda: self._emit_clicked("logout"),
+                    "gradient_button"
+                ),
+                (
+                    "Home",
+                    lambda: self._emit_clicked("suite_home"),
+                    "payroll_button"
+                ),
             ],
             spacing=8,
             parent=self,
         )
-        btn_layout.addStretch()
 
-        con_layout.addSpacing(6)
+        con_layout.addSpacing(12)
         con_layout.addWidget(col)
+
         layout.addWidget(con)
         layout.addStretch()
+
         self._layout.addLayout(layout)
 
     def show_help(self):
@@ -908,6 +986,16 @@ class Body(QWidget):
             UIFactory.label("👨🏻‍💻 Users", style_key="header_label")
         )
 
+        users_layout.addWidget(
+            UIFactory.label(
+                "Access applies to the entire Finance Suite. Enter the user's email below to grant access.\n"
+                "A welcome email with the installation guide will be sent automatically.",
+                font_size=11, color='white'
+            )
+        )
+        users_layout.addSpacing(4)
+
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFixedHeight(120)
@@ -964,6 +1052,16 @@ class Body(QWidget):
         logs_layout.addWidget(
             UIFactory.label("🧾 Logs", style_key="header_label")
         )
+
+        logs_layout.addWidget(
+            UIFactory.label(
+                "Share logs with Support to help troubleshoot issues.\n"
+                "Select a date range below, or check “Current Log” to share only the current log.",
+                font_size=11, color='white'
+            )
+        )
+        users_layout.addSpacing(4)
+
 
         # ── Date row: [Start] → [Cutoff] ───────────────────────────────────────
         date_picker_row = QHBoxLayout()

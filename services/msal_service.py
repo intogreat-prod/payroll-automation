@@ -19,8 +19,10 @@ Callbacks are wired by the Orchestrator after construction:
 
 import msal
 import requests
+from io import BytesIO
 from msal_extensions import PersistedTokenCache, build_encrypted_persistence
 from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap
 
 from utils.file_utils import app_data_path
 from utils.app_config_user import get
@@ -155,7 +157,7 @@ class MSALService:
             self.log.info("MSALService: Token acquired — fetching user profile")
 
             try:
-                email, name = self._fetch_user_profile()
+                email, name, role, photo = self._fetch_user_profile()
             except Exception as e:
                 self.log.error(f"MSALService: Failed to fetch user profile — {e}", error=e)
                 if self.error_login:
@@ -164,7 +166,7 @@ class MSALService:
 
             self.log.event("Login complete", user=name, email=email)
             if self.on_login_complete:
-                self.on_login_complete(email, name, self.token)
+                self.on_login_complete(email, name, self.token, role, photo)
 
         else:
             error = (
@@ -176,26 +178,91 @@ class MSALService:
             if self.error_login:
                 self.error_login(error)
 
-    def _fetch_user_profile(self) -> tuple[str, str]:
-        """Calls Graph /me to get the user's email and display name."""
+    def _fetch_user_profile(self) -> tuple[str | None, str | None, str | None, QPixmap | None]:
+        """Calls Graph /me and /me/photo to get the user's profile information."""
         self.log.info("MSALService: Calling Graph /me")
-        response = requests.get(
-            "https://graph.microsoft.com/v1.0/me",
-            headers={"Authorization": f"Bearer {self.token}"},
-            timeout=10,
-        )
 
-        if response.status_code == 200:
-            data  = response.json()
-            email = data.get("mail")
-            name  = data.get("displayName")
-            self.log.info(f"MSALService: Profile fetched | {name} ({email})")
-            return email, name
+        email = None
+        name = None
+        role = None
+        pixmap = None
 
-        raise RuntimeError(
-            f"MSALService: Graph /me returned HTTP {response.status_code}"
-        )
+        headers = {
+            "Authorization": f"Bearer {self.token}"
+        }
 
+        # ── User profile ────────────────────────────────────────────────
+        try:
+            response = requests.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers=headers,
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                email = data.get("mail") or data.get("userPrincipalName")
+                name = data.get("displayName")
+                role = data.get("jobTitle")
+
+                self.log.info(
+                    f"MSALService: Profile fetched | {name} ({email})"
+                )
+            else:
+                self.log.warning(
+                    f"MSALService: Failed to fetch profile | "
+                    f"HTTP {response.status_code}"
+                )
+
+        except requests.exceptions.Timeout:
+            self.log.warning("MSALService: Graph /me request timed out")
+
+        except requests.exceptions.RequestException as e:
+            self.log.warning(
+                f"MSALService: Graph /me request failed — {e}"
+            )
+
+        # ── Profile photo ───────────────────────────────────────────────
+        try:
+            response = requests.get(
+                "https://graph.microsoft.com/v1.0/me/photo/$value",
+                headers=headers,
+                timeout=10,
+            )
+
+            if response.status_code == 200:
+                photo = QPixmap()
+
+                if photo.loadFromData(response.content):
+                    pixmap = photo
+                    self.log.info("MSALService: Profile photo fetched")
+                else:
+                    self.log.warning(
+                        "MSALService: Profile photo could not be decoded"
+                    )
+
+            elif response.status_code == 404:
+                self.log.info("MSALService: No profile photo found")
+
+            else:
+                self.log.warning(
+                    f"MSALService: Failed to fetch profile photo | "
+                    f"HTTP {response.status_code}"
+                )
+
+        except requests.exceptions.Timeout:
+            self.log.warning(
+                "MSALService: Profile photo request timed out"
+            )
+
+        except requests.exceptions.RequestException as e:
+            self.log.warning(
+                f"MSALService: Profile photo request failed — {e}"
+            )
+
+        return email, name, role, pixmap
+    
     def _load_cache(self) -> PersistedTokenCache:
         """Loads (or creates) the encrypted token cache file."""
         cache_path = app_data_path() / "data" / "auth" / "msal" / "token_cache.bin"
