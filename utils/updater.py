@@ -63,7 +63,7 @@ def get_latest_release() -> tuple[str, str] | None:
         )
         if not tag or not asset:
             return None
-        return tag, str(asset["id"])
+        return tag, str(asset["id"]), data["body"]
     except Exception:
         return None
 
@@ -84,7 +84,7 @@ def is_newer(latest: str, current: str) -> bool:
 
 class DownloadWorker(QThread):
     progress = pyqtSignal(int, str)   # percent, message
-    finished = pyqtSignal(bool)
+    finished = pyqtSignal(bool, str)
 
     def __init__(self, asset_id: str, log, file_manager, state: dict):
         super().__init__()
@@ -126,38 +126,22 @@ class DownloadWorker(QThread):
                     f.write(chunk)
                     downloaded += len(chunk)
                     if total:
-                        percent = int((downloaded / total) * 80)
+                        percent = int((downloaded / total) * 100)
                         self.progress.emit(percent, "Downloading update...")
 
-            self.progress.emit(80, "Launching installer...")
+            self.progress.emit(100, "Download complete...")
             self.log.info(f"Updater: Downloaded installer to {tmp_path}")
-
-            self.log.info("Updater: Launching installer")
-            installer = subprocess.Popen(
-                [tmp_path, "/VERYSILENT", "/NORESTART"],
-                close_fds=True,
-            )
-
-            self.log.info(
-                f"Updater: Installer launched successfully. PID={installer.pid}"
-            )
-
-            self.log.info(
-                f"Updater: Installer poll immediately after launch = {installer.poll()}"
-            )
-
-            self.finished.emit(True)
-            self.file_manager.upload_log(self.state)
-            self.progress.emit(100, "Updating...")
-            time.sleep(2)
-            self.log.info("Updater: Closing FinanceSuite")
-            sys.exit(0)
-
+            # Installer launch + process exit now happen on the MAIN
+            # thread (see Orchestrator._on_update_done). sys.exit() here
+            # only ends this background thread, not the process — the
+            # running app (and its lock on Finance Suite.exe) would
+            # still be alive when Inno tries to overwrite it, causing
+            # that file to silently fail to update.
+            self.finished.emit(True, tmp_path)
+            
         except Exception as e:
-            self.log.warning(f"Updater: Download/install failed — {e}")
-            self.finished.emit(False)
-
-        finally:
+            self.log.warning(f"Updater: Download failed — {e}")
+            self.finished.emit(False, "")
             if tmp_dir:
                 try:
                     shutil.rmtree(tmp_dir, ignore_errors=True)

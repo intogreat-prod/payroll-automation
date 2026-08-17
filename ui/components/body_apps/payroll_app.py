@@ -986,6 +986,7 @@ class PayrollBody:
     def show_payroll_status(self, codes):
 
         # Remove the shared processing progress widgets if they exist
+        self.body._main_window.stop_progress_heartbeat()
         for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
             widget = getattr(self, attr, None)
             if widget is not None:
@@ -1123,6 +1124,7 @@ class PayrollBody:
         self.processing_progress.setStyleSheet(STYLES["progress_bar"])
         self.processing_progress.setTextVisible(False)
         self.body._layout.addWidget(self.processing_progress)
+        self.body._main_window.start_progress()
 
     def update_processing_progress(self, percent: int, message: str):
         """
@@ -1135,7 +1137,7 @@ class PayrollBody:
         message : str   Current stage label
         """
         if hasattr(self, "processing_progress") and self.processing_progress:
-            self.processing_progress.setValue(percent)
+            self.body._animate_progress(self.processing_progress, percent, "_payroll_processing_progress_anim")
         if hasattr(self, "processing_percent_label") and self.processing_percent_label:
             self.processing_percent_label.setText(f"{percent}%")
         if hasattr(self, "processing_status_label") and self.processing_status_label:

@@ -89,11 +89,11 @@ def main():
    print("\nFinance Suite — Writing configuration file...\n")
 
    write_env(args.app_dir, {
+       "VERSION":                args.version,
        "loc":                    args.loc,
        "installation_loc":       str(args.app_dir).replace("\\", "/"),
        "app":                    args.app_name,
        "ENVT":                   args.envt,
-       "VERSION":                args.version,
        "support_email":          args.support_email
        
    })

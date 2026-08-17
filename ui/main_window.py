@@ -8,7 +8,7 @@ card and exposes resize_to() for screens that need different sizes.
 """
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QGraphicsDropShadowEffect
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon, QColor
 
 from ui.styles import STYLES
@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
         shadow.setOffset(0, 0)
         shadow.setColor(QColor(100, 180, 255 ,160))
 
-        self.app_card.setGraphicsEffect(shadow)
+        #self.app_card.setGraphicsEffect(shadow)
 
         # ---------------------------------------------------------------
         # Fixed components
@@ -95,15 +95,26 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet(STYLES["app_window"])
 
+        self._repaint_heartbeat = QTimer(self)
+        self._repaint_heartbeat.setInterval(80)
+        self._repaint_heartbeat.timeout.connect(self.app_card.update)
+
     # ===================================================================
     # PUBLIC
     # ===================================================================
+    def start_progress_heartbeat(self):
+        if not self._repaint_heartbeat.isActive():
+            self._repaint_heartbeat.start()
+
+    def stop_progress_heartbeat(self):
+        self._repaint_heartbeat.stop()
 
     def resize_to(self, w, h):
         self,self.setUpdatesEnabled(False)
         self.setFixedSize(w, h)
         self.app_card.setFixedSize(w - 10, h - 10)
         self.setUpdatesEnabled(True)
+        self.repaint()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

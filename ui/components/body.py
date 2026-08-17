@@ -16,9 +16,9 @@ What it does NOT do:
 
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout,
-    QLabel, QFrame, QProgressBar, QHBoxLayout
+    QLabel, QFrame, QProgressBar, QHBoxLayout, QTabWidget, QCheckBox
 )
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QDate
 from PyQt6.QtGui import QPixmap
 
 from ui.styles import STYLES
@@ -94,7 +94,9 @@ class Body(QWidget):
         }
 
         self.height = {
-            "settings": 600,
+            "settings": 800,
+            "excel_locker_single": 670,
+            "excel_locker_multiple": 750,
         }
 
         # ---------------------------------------------------------------
@@ -209,6 +211,15 @@ class Body(QWidget):
         """Restore a button to its default state."""
         btn.setText(default_text)
         btn.setEnabled(True)
+
+    def _animate_progress(self, bar, percent, anim_attr):
+        anim = QPropertyAnimation(bar, b"value")
+        anim.setDuration(350)
+        anim.setStartValue(bar.value())
+        anim.setEndValue(percent)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.start()
+        setattr(self, anim_attr, anim)
 
     def _emit_clicked(self, btn):
         if self.on_clicked:
@@ -472,13 +483,13 @@ class Body(QWidget):
     # ===================================================================
     # SCREEN 3 — UPDATE AVAILABLE
     # ===================================================================
-    def show_update_prompt(self, current_version: str, latest_version: str, on_confirm):
+    def show_update_prompt(self, current_version: str, latest_version: str, notes: str, on_confirm):
         """
         Shows when a newer version is detected after login.
         on_confirm is a lambda from the Orchestrator that triggers the download.
         """
         self._clear()
-        self._resize(400, 530)
+        self._resize(400, 600)
         self._layout.setContentsMargins(10, 10, 10, 10)
         self._layout.setSpacing(10)
         self._layout.addWidget(UIFactory.label(
@@ -499,7 +510,36 @@ class Body(QWidget):
             word_wrap=True
         ))
         self._layout.addWidget(UIFactory.label(
-        "The installer will run in the background. \n If the app did not restart automatically, please open it manually.",
+            f"What's New:",
+            style_key="standard",
+            align="center",
+            word_wrap=True,
+            font_weight="bold"
+        ))
+
+         # ── Status ────────────────────────────────────────────────────────────────
+        note_count = notes.count("\r\n")
+
+        git_release_notes = UIFactory.label(
+            notes,
+            align="center",
+            word_wrap=True,
+            style_key="standard"
+
+        )
+
+        if note_count > 3:
+            git_release_notes_scroll = QScrollArea()
+            git_release_notes_scroll.setWidgetResizable(True)
+            git_release_notes_scroll.setStyleSheet(STYLES['settings_scroll'])
+            git_release_notes_scroll.setWidget(git_release_notes)
+            self._layout.addWidget(git_release_notes_scroll)
+        else:
+            self._layout.addWidget(git_release_notes)
+
+        self._layout.addStretch()
+        self._layout.addWidget(UIFactory.label(
+        "The installer will run in the background and auto relaunch. \n If the app did not restart automatically, please open it manually.",
             style_key="standard_red",
             align="center",
             word_wrap=True
@@ -574,6 +614,7 @@ class Body(QWidget):
         self.download_progress.setStyleSheet(STYLES["progress_bar"])
         self.download_progress.setTextVisible(False)
         self._layout.addWidget(self.download_progress)
+        self._main_window.start_progress_heartbeat()
 
         # Hint text
         self._layout.addWidget(UIFactory.label(
@@ -586,7 +627,7 @@ class Body(QWidget):
 
     def update_download_progress(self, percent: int, message: str):
         """Update the download progress bar and labels. Called from Orchestrator via signal."""
-        self.download_progress.setValue(percent)
+        self._animate_progress(self.download_progress, percent, "_download_progress_anim")
         self.download_percent_label.setText(f"{percent}%")
         self.download_status_label.setText(message)
 
@@ -647,7 +688,7 @@ class Body(QWidget):
             [
                 ("Payroll", lambda: self._emit_clicked("payroll_app"), "payroll_button"),
                 ("Billing", lambda: self._emit_clicked("billing_app"), "payroll_button"),
-                ("Toolbox", lambda: self._emit_clicked("toolbox"), "payroll_button"),
+                ("Toolbox", lambda: self._emit_clicked("app_toolbox"), "payroll_button"),
                 ("Settings", lambda: self._emit_clicked("app_settings"), "payroll_button"),
             ],
             spacing=8,
@@ -713,6 +754,41 @@ class Body(QWidget):
         self._hide_aux_buttons()
         self._hide_statuses()
         self._emit_clicked(['add_user', email])
+
+    def _on_share_logs_clicked(self):
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self.share_logs_btn.setDisabled(True)
+        self.share_logs_btn.setText("Sharing...")
+
+        current_file = self.share_logs_current_cbox.isChecked()
+        start_date = self.start_date.date().toPyDate()
+        end_date = self.end_date.date().toPyDate()
+        self._emit_clicked(["share_logs", current_file, start_date, end_date])
+
+    def _on_excel_locker_upload_btn_click(self):
+        is_single = self.excel_locker_tabs.currentIndex() == 0
+
+        if is_single:
+            password = self.excel_locker_single_password.text().strip()
+            create_copy = self.excel_locker_single_create_copy.isChecked()
+            self._set_btn_processing(self.excel_locker_single_upload_btn, "Locking...")
+        else:
+            password = self.excel_locker_multiple_password.text().strip()
+            create_copy = self.excel_locker_multiple_create_copy.isChecked()
+            self._set_btn_processing(self.excel_locker_multiple_upload_btn, "Locking...")
+
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self.excel_locker_status.hide()
+
+        self._emit_clicked([
+            'lock_excel',
+            password,
+            is_single,
+            create_copy
+        ])
+
 
     # ===================================================================
     # SCREEN 5.5 — SUITE UTIL SCREEN
@@ -802,11 +878,6 @@ class Body(QWidget):
         self._layout.setContentsMargins(10, 10, 10, 10)
         self._resize(530, self.height["settings"])
 
-        self._layout.addWidget(UIFactory.button( "Home",
-            lambda: self._emit_clicked("suite_home"), "payroll_button"
-            )
-        )
-
         content = QFrame()
         content.setObjectName("featureContent")
         content.setStyleSheet(STYLES["feature_content"])
@@ -815,10 +886,17 @@ class Body(QWidget):
         content_layout.setSpacing(4)
         content_layout.setContentsMargins(10, 10, 10, 10)
 
-        content_layout.addWidget(UIFactory.label("⚙️ Settings", color='white', font_weight="bold", font_size=17))
+        content_layout.addWidget(
+            UIFactory.label(
+                "⚙️ Settings",
+                color="white",
+                font_weight="bold",
+                font_size=17
+            )
+        )
         content_layout.addSpacing(3)
 
-        # ── Users frame ──────────────────────────────────────────────────────────
+        # ── Users frame ──────────────────────────────────────────────────────
         users_con = QFrame()
         users_con.setStyleSheet(STYLES["standard_container"])
 
@@ -826,12 +904,14 @@ class Body(QWidget):
         users_layout.setSpacing(2)
         users_layout.setContentsMargins(12, 12, 12, 12)
 
-        users_layout.addWidget(UIFactory.label("Users", style_key="header_label"))
+        users_layout.addWidget(
+            UIFactory.label("👨🏻‍💻 Users", style_key="header_label")
+        )
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFixedHeight(120)
-        scroll.setStyleSheet(STYLES['settings_scroll'])
+        scroll.setStyleSheet(STYLES["settings_scroll"])
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
@@ -840,41 +920,560 @@ class Body(QWidget):
 
         if users:
             for u in users:
-                scroll_layout.addWidget(UIFactory.label(u, style_key="standard"))
+                scroll_layout.addWidget(
+                    UIFactory.label(u, style_key="standard")
+                )
         else:
-            scroll_layout.addWidget(UIFactory.label("No users found.", style_key="standard_red"))
+            scroll_layout.addWidget(
+                UIFactory.label("No users found.", style_key="standard_red")
+            )
 
         scroll.setWidget(scroll_content)
         users_layout.addWidget(scroll)
         users_layout.addSpacing(4)
 
-        self.add_user_input = UIFactory.input("Add a user (e.g., jdelacruz@intogreatsolutions.com)")
+        self.add_user_input = UIFactory.input(
+            "Add a user (e.g., jdelacruz@intogreatsolutions.com)"
+        )
         users_layout.addWidget(self.add_user_input)
         users_layout.addSpacing(4)
 
         self.add_user_btn = UIFactory.button(
             "Add User",
-            lambda: self._on_add_user_clicked(self.add_user_input.text().strip()),
+            lambda: self._on_add_user_clicked(
+                self.add_user_input.text().strip()
+            ),
             "settings_button",
             height=35
         )
 
         users_layout.addWidget(self.add_user_btn)
+
         content_layout.addWidget(users_con)
+        content_layout.addSpacing(8)
+
+        # ── Date row: [Start] → [Cutoff] ────────────────────────────────────
+        # ── Logs frame ─────────────────────────────────────────────────────────
+        logs_con = QFrame()
+        logs_con.setStyleSheet(STYLES["standard_container"])
+
+        logs_layout = QVBoxLayout(logs_con)
+        logs_layout.setSpacing(4)
+        logs_layout.setContentsMargins(12, 12, 12, 12)
+
+        logs_layout.addWidget(
+            UIFactory.label("🧾 Logs", style_key="header_label")
+        )
+
+        # ── Date row: [Start] → [Cutoff] ───────────────────────────────────────
+        date_picker_row = QHBoxLayout()
+        date_picker_row.setSpacing(0)
+
+        # Left stretch
+        date_picker_row.addStretch()
+
+        # Start date
+        start_layout = QVBoxLayout()
+        start_layout.setSpacing(4)
+
+        start_layout.addWidget(
+            UIFactory.label(
+                "Start Date:",
+                font_weight="bold",
+                color="white"
+            )
+        )
+
+        self.start_date = UIFactory.date_picker(
+            default_date=QDate.currentDate(),
+            width=90,
+            style_key="date_picker"
+        )
+
+        start_layout.addWidget(self.start_date)
+        date_picker_row.addLayout(start_layout)
+
+        # Arrow
+        arrow_label = UIFactory.label(
+            "➜",
+            color="white",
+            font_size=18
+        )
+        arrow_label.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        arrow_label.setContentsMargins(10, 0, 10, 4)
+
+        date_picker_row.addWidget(arrow_label)
+
+        # Cutoff date
+        cutoff_layout = QVBoxLayout()
+        cutoff_layout.setSpacing(4)
+
+        cutoff_layout.addWidget(
+            UIFactory.label(
+                "End Date:",
+                font_weight="bold",
+                color="white"
+            )
+        )
+
+        self.end_date = UIFactory.date_picker(
+            default_date=QDate.currentDate(),
+            width=90,
+            style_key="date_picker"
+        )
+
+        cutoff_layout.addWidget(self.end_date)
+        date_picker_row.addLayout(cutoff_layout)
+        date_picker_row.addStretch()
+
+
+        # Current Log checkbox
+        self.share_logs_current_cbox = QCheckBox("Current Log")
+
+        date_picker_row.addWidget(self.share_logs_current_cbox)
+
+        # Right stretch
+        date_picker_row.addStretch()
+
+        logs_layout.addLayout(date_picker_row)
+        logs_layout.addSpacing(10)
+
+        self.share_logs_btn = UIFactory.button(
+            "Share Logs with Support",
+            lambda: self._on_share_logs_clicked(),
+            "settings_button",
+            height=35
+        )
+
+        logs_layout.addWidget(self.share_logs_btn)
+
+        # Add Logs container to main content
+        content_layout.addWidget(logs_con)
+        content_layout.addSpacing(8)
+
+        # ── Status ──────────────────────────────────────────────────────────
+        self.app_settings_status = UIFactory.label(
+            "",
+            align="center",
+            font_size=8
+        )
+        self.app_settings_status.hide()
+
+        content_layout.addWidget(self.app_settings_status)
         content_layout.addStretch()
 
-        # Status labels
-        self.app_settings_status = UIFactory.label("", align="center", font_size=8)
-        self.app_settings_status.hide()
-        content_layout.addWidget(self.app_settings_status)
-
+        # Add content to main layout
         self._layout.addWidget(content)
 
-    def show_settings_add_user_status(self, code):
+        # Home button
+        self._layout.addWidget(
+            UIFactory.button(
+                "Home",
+                lambda: self._emit_clicked("suite_home"),
+                "payroll_button"
+            )
+        )
+
+    def show_settings_status(self, code):
         self._resize(530, self.height["settings"] + 10)
-        self.app_settings_status.setText(APP_SETTINGS_STATUSES[code])
+
+        if isinstance(code, tuple):
+            code_, filename = code
+        else:
+            code_ = code
+            filename = ""
+
+        if "success" in code or "error" in code:
+            self.share_logs_btn.setDisabled(False)
+            self.share_logs_btn.setText("Share Logs with Support")
+
+        message_template = APP_SETTINGS_STATUSES[code_]
+        self.app_settings_status.setText(message_template.format(file_name=filename or ""))
+        
         self.app_settings_status.setStyleSheet(
-                f"color: {'#16A34A' if 'success' in code else '#DC2626'};"
+                f"color: {'#16A34A' if 'success' in code_ else '#DC2626' if 'error' in code_ else '#D3D0D0'};"
                 "font-size: 10px;"
             )
         self.app_settings_status.show()
+
+    # ===================================================================
+    # SCREEN 5 — TOOLBOX
+    # ===================================================================
+    def show_toolbox(self):
+        self._clear()
+        self._resize(350, 400)
+
+        tools_layout = QVBoxLayout()
+        tools_layout.setSpacing(4)
+        tools_layout.setContentsMargins(10, 10, 10, 10)
+        tools_layout.addWidget(UIFactory.label("Toolbox", font_size=12, font_weight='bold', 
+                                                 color='rgba(200, 200, 200, 1)', align='center'))
+
+        col, layout = UIFactory.button_column(
+            [
+                ("Excel Locker", lambda: self._emit_clicked("excel_locker_tool"), "payroll_button"),
+                ("Home",                lambda: self._emit_clicked("suite_home"),  "payroll_button"),
+            ],
+            spacing=12,
+            parent=self,
+            con_style_key=STYLES['body_clear']
+        )
+
+        layout.addStretch()
+        tools_layout.addWidget(col)
+        self._layout.addLayout(tools_layout)
+
+    def _horizontal_tools(self):
+        self._layout.setSpacing(8)
+        self.setStyleSheet(STYLES["body_clear"])
+
+        col, layout = UIFactory.button_row(
+            [
+                ("Excel Locker", lambda: self._emit_clicked("excel_locker_tool"), "payroll_button"),
+                ("◀ Back",                lambda: self._emit_clicked("back"),  "payroll_button"),
+            ],
+            width=150,
+            parent=self
+        )
+        layout.addStretch()
+        col.setStyleSheet(STYLES['body'])
+        self._layout.addWidget(col)
+
+    # ===================================================================
+    # EXCEL LOCKER
+    # ===================================================================
+    def show_excel_locker_tool(self, password):
+        self._clear()
+        self._horizontal_tools()
+
+        self._layout.setContentsMargins(10, 10, 10, 10)
+        self._resize(530, self.height['excel_locker_single'])
+
+        content = QFrame()
+        content.setObjectName("featureContent")
+        content.setStyleSheet(STYLES["feature_content"])
+
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+
+        # ── Title ────────────────────────────────────────────────────────────────
+        content_layout.addWidget(
+            UIFactory.label(
+                "🔒 Excel Locker",
+                color="white",
+                font_weight="bold",
+                font_size=17
+            )
+        )
+
+        # ── Description ──────────────────────────────────────────────────────────
+        content_layout.addWidget(
+            UIFactory.label(
+                f"Protect Excel files with a default {password} or a password of your choice, either individually or in bulk.<br><br>"
+                "For bulk files, use a .txt metadata file to assign specific passwords to each file.<br>"
+                "Enable 'Create a copy' to keep the original files unchanged.",
+                font_size=11,
+                color="white",
+                word_wrap=True
+            )
+        )
+
+        content_layout.addSpacing(3)
+
+        # ── Tabs ─────────────────────────────────────────────────────────────────
+        self.excel_locker_tabs = QTabWidget()
+        self.excel_locker_tabs.setStyleSheet(STYLES["tab_widget"])
+
+        # ── Single File Tab ──────────────────────────────────────────────────────
+        single_tab = QWidget()
+        single_layout = QVBoxLayout(single_tab)
+        single_layout.setContentsMargins(12, 12, 12, 12)
+        single_layout.setSpacing(8)
+
+        single_layout.addWidget(
+            UIFactory.label(
+                "Select an Excel file and use the default password or set your own password<br>" 
+                " to protect it.<br>",
+                style_key="standard"
+            )
+        )
+        single_layout.addWidget(
+            UIFactory.label(
+                "🔐 Password:",
+                style_key="header_label"
+            )
+        )
+
+        copy_container = QFrame()
+        copy_layout = QHBoxLayout(copy_container)
+        copy_layout.setContentsMargins(0, 0, 0, 0)
+        copy_layout.setSpacing(8)
+
+        self.excel_locker_single_password = UIFactory.input("")
+        self.excel_locker_single_password.setFixedHeight(30)
+        self.excel_locker_single_password.setPlaceholderText(password)
+
+        self.excel_locker_single_create_copy = QCheckBox("Create a copy")
+
+        copy_layout.addWidget(self.excel_locker_single_password, 75)
+        copy_layout.addWidget(self.excel_locker_single_create_copy, 25)
+        copy_layout.addStretch()
+        single_layout.addWidget(copy_container)
+        
+
+        self.excel_locker_single_upload_btn = UIFactory.button(
+            "Upload",
+            lambda: self._on_excel_locker_upload_btn_click(),
+            "payroll_button"
+        )
+
+        single_layout.addWidget(self.excel_locker_single_upload_btn)
+        single_layout.addStretch()
+
+        # ── Multiple Files Tab ───────────────────────────────────────────────────
+        multiple_tab = QWidget()
+        multiple_layout = QVBoxLayout(multiple_tab)
+        multiple_layout.setContentsMargins(12, 12, 12, 12)
+        multiple_layout.setSpacing(8)
+
+        multiple_layout.addWidget(
+            UIFactory.label(
+                "Select multiple Excel files and optionally provide a .txt metadata file "
+                "to assign specific passwords to each file, or use the default password "
+                "or a password of your choice for all files.<br><br>"
+                "<b>TXT format:</b><br>"
+                "filename.xlsx,password<br>"
+                "filename1.xlsx,password123",
+                style_key="standard",
+                word_wrap=True
+            )
+        )
+
+        multiple_layout.addWidget(
+            UIFactory.label(
+                "🔐 Password:",
+                style_key="header_label"
+            )
+        )
+
+        copy_container = QFrame()
+        copy_layout = QHBoxLayout(copy_container)
+        copy_layout.setContentsMargins(0, 0, 0, 0)
+        copy_layout.setSpacing(8)
+
+        self.excel_locker_multiple_password = UIFactory.input("")
+        self.excel_locker_multiple_password.setPlaceholderText(password)
+        self.excel_locker_multiple_password.setFixedHeight(30)
+
+        self.excel_locker_multiple_create_copy = QCheckBox("Create a copy")
+
+        copy_layout.addWidget(self.excel_locker_multiple_password, 75)
+        copy_layout.addWidget(self.excel_locker_multiple_create_copy, 25)
+        copy_layout.addStretch()
+        multiple_layout.addWidget(copy_container)
+
+
+        self.excel_locker_multiple_upload_btn = UIFactory.button(
+            "Upload",
+            lambda: self._on_excel_locker_upload_btn_click(),
+            "payroll_button"
+        )
+
+        multiple_layout.addWidget(self.excel_locker_multiple_upload_btn)
+        multiple_layout.addStretch()
+
+        # ── Add Tabs ─────────────────────────────────────────────────────────────
+        self.excel_locker_tabs.addTab(
+            single_tab,
+            "Single File"
+        )
+
+        self.excel_locker_tabs.addTab(
+            multiple_tab,
+            "Multiple Files"
+        )
+
+        # Resize based on tab
+        self.excel_locker_tabs.currentChanged.connect(self._on_excel_locker_tab_changed)
+
+        content_layout.addWidget(self.excel_locker_tabs)
+
+        # ── Status ────────────────────────────────────────────────────────────────
+        self.excel_locker_status_scroll = QScrollArea()
+        self.excel_locker_status_scroll.setWidgetResizable(True)
+        self.excel_locker_status_scroll.setStyleSheet(STYLES['settings_scroll'])
+        self.excel_locker_status_scroll.hide()
+
+        self.excel_locker_status = UIFactory.label(
+            "",
+            color="green",
+            align="center"
+        )
+        self.excel_locker_status.hide()
+        self.excel_locker_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        content_layout.addWidget(self.excel_locker_status_scroll)
+        content_layout.addWidget(self.excel_locker_status)
+        content_layout.addStretch()
+        self._layout.addWidget(content)
+
+        # Kept so show/update/hide-progress can add/remove widgets into the
+        # same frame the tabs and status label live in.
+        self.excel_locker_content_layout = content_layout
+
+    def _excel_locker_height(self):
+        """Multiple Files has an extra instructions block (TXT format
+        example), so it needs more vertical room than Single File."""
+        is_multiple = getattr(self, "excel_locker_tabs", None) and self.excel_locker_tabs.currentIndex() == 1
+        return self.height["excel_locker_multiple"] if is_multiple else self.height["excel_locker_single"]
+
+    def _on_excel_locker_tab_changed(self, index):
+        self._resize(530, self._excel_locker_height())
+
+    # ===================================================================
+    # EXCEL LOCKER PROGRESS BAR
+    # ===================================================================
+
+    def show_excel_locker_progress(self, title: str = "Locking files…"):
+        """
+        Render a progress bar under the Excel Locker tabs while the
+        background worker locks the selected file(s). Mirrors the
+        show_processing_progress()/update_processing_progress() pattern
+        used by Payroll/Billing (see body_apps/payroll_app.py and
+        body_apps/billing_app.py).
+        """
+        self._resize(530, self._excel_locker_height() + 40)
+
+        self.excel_locker_progress_label = UIFactory.label(
+            title,
+            style_key="standard",
+            align="center",
+            word_wrap=True,
+        )
+        self.excel_locker_content_layout.addWidget(self.excel_locker_progress_label)
+
+        self.excel_locker_percent_label = UIFactory.label(
+            "0%",
+            style_key="header_label",
+            align="center",
+        )
+        self.excel_locker_content_layout.addWidget(self.excel_locker_percent_label)
+
+        self.excel_locker_progress = QProgressBar()
+        self.excel_locker_progress.setRange(0, 100)
+        self.excel_locker_progress.setValue(0)
+        self.excel_locker_progress.setFixedHeight(3)
+        self.excel_locker_progress.setStyleSheet(STYLES["progress_bar"])
+        self.excel_locker_progress.setTextVisible(False)
+        self.excel_locker_content_layout.addWidget(self.excel_locker_progress)
+        self._main_window.start_progress_heartbeat()
+
+    def update_excel_locker_progress(self, percent: int, message: str):
+        """Update the Excel Locker progress bar and labels. Called from
+        Orchestrator via the worker's progress signal."""
+        if getattr(self, "excel_locker_progress", None):
+            self._animate_progress(self.excel_locker_progress, percent, "_excel_locker_progress_animation")
+        if getattr(self, "excel_locker_percent_label", None):
+            self.excel_locker_percent_label.setText(f"{percent}%")
+        if getattr(self, "excel_locker_progress_label", None):
+            self.excel_locker_progress_label.setText(message)
+
+    def _clear_excel_locker_progress(self):
+        self._main_window.stop_progress_heartbeat()
+        for attr in ("excel_locker_progress_label", "excel_locker_percent_label", "excel_locker_progress"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                self.excel_locker_content_layout.removeWidget(widget)
+                widget.deleteLater()
+                setattr(self, attr, None)
+
+    def show_excel_locker_result(self, total, locked, errors, single_file=False, single_name=None):
+        """
+        Single entry point for all excel-locker status output.
+
+        - Multi-file, no errors: "5 out of 5 locked."
+        - Single-file, no errors: "filename.xlsx locked successfully."
+        - Errors present: one line per file, resolved from
+          EXCEL_LOCKER_STATUSES (see ui/statuses.py) via each
+          (name, status_code) pair in `errors`.
+        Box height grows/shrinks to fit the number of lines shown.
+        """
+        self._clear_excel_locker_progress()
+        self._set_btn_default(self.excel_locker_single_upload_btn, "Upload")
+        self._set_btn_default(self.excel_locker_multiple_upload_btn, "Upload")
+
+        if not errors:
+            if single_file and single_name:
+                message = EXCEL_LOCKER_STATUSES["locked_success"].format(file_name=single_name)
+            else:
+                message = f"{locked} out of {total} locked successfully."
+            line_count = 1
+            is_success = True
+        else:
+            lines = [
+                EXCEL_LOCKER_STATUSES.get(code, code).format(file_name=name)
+                for name, code in errors
+            ]
+            if locked > 0:
+                summary = f"{locked} out of {total} locked succesfully."
+                lines.insert(0, f'<span style="color:#16A34A;">{summary}</span>')
+            line_count = len(lines)
+            message = "<br>".join(lines)
+            is_success = False
+
+       # Dynamic height: base height for one line, plus a bit per extra line.
+        line_count = message.count("<br>") + 1
+        base_height = self._excel_locker_height()
+        line_height = 14
+        max_lines_before_scroll = 8
+
+        visible_lines = min(line_count, max_lines_before_scroll)
+        extra_height = max(0, (visible_lines - 1) * line_height)
+
+        self._resize(530, base_height + 10 + extra_height)
+
+
+        if line_count > 8:
+            # ── Scrollable status ───────────────────────────────────────────────
+            status_label = self.excel_locker_status_scroll.widget()
+
+            if status_label is None:
+                status_label = QLabel()
+                status_label.setWordWrap(True)
+                status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                self.excel_locker_status_scroll.setWidget(status_label)
+
+            status_label.setText(message)
+
+            status_label.setStyleSheet(
+                f"color: {'#16A34A' if is_success else '#DC2626'};"
+                "font-size: 10px;"
+            )
+
+            status_label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse |
+                Qt.TextInteractionFlag.TextSelectableByKeyboard
+            )
+
+            self.excel_locker_status_scroll.show()
+            self.excel_locker_status.hide()
+
+        else:
+            # ── Normal status ───────────────────────────────────────────────────
+            self.excel_locker_status.setText(message)
+            self.excel_locker_status.setStyleSheet(
+                f"color: {'#16A34A' if is_success else '#DC2626'};"
+                "font-size: 10px;"
+            )
+
+            self.excel_locker_status.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse |
+                Qt.TextInteractionFlag.TextSelectableByKeyboard
+            )
+
+            self.excel_locker_status.show()
+            self.excel_locker_status_scroll.hide()
+
+

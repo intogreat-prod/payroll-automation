@@ -39,9 +39,9 @@ ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 ENV_VALUES = dotenv_values(ENV_PATH)
 
 if os.path.exists(_ENV_PATH):
-   load_dotenv(_ENV_PATH)
+   load_dotenv(_ENV_PATH, override=True)
 else:
-   load_dotenv()  # Fall back to current directory or system env vars
+   load_dotenv(override=True)  # Fall back to current directory or system env vars
 
 def is_env():
     value = ENV_VALUES.get("ENVT")

@@ -16,6 +16,16 @@ The split:
                                        app in the suite shares.
     orchestrators/payroll_orchestrator.py — everything under the Payroll app.
     orchestrators/billing_orchestrator.py — everything under the Billing app.
+    features/settings_feature.py    — suite Settings (Add User) flow.
+    features/tools_feature.py       — suite Toolbox (Excel Locker) flow.
+
+The last two are plain functions taking `self` as their first argument
+rather than their own classes — they're one-off suite-root flows with
+no state of their own beyond what's already in self.state, so a class
+wrapper would just be ceremony. They're imported above and assigned
+onto the Orchestrator class near the bottom of this file, which makes
+them ordinary bound methods (self._add_user(...), self._lock_excel(...))
+exactly as if they'd been defined in the class body directly.
 
 Each child orchestrator gets a reference back to this suite root (`suite`)
 and reads/writes `suite.state` directly, so app state is still one shared
@@ -63,7 +73,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -75,8 +84,6 @@ from orchestrators.billing_orchestrator import BillingOrchestrator
 from services.config_service import ConfigService
 from services.msal_service import MSALService
 from services.sharepoint_service import SharePointService
-from services.outlook_services import OutlookService
-from services.power_automate_service import PowerAutomateService
 from ui.main_window import MainWindow
 from utils.app_config_user import get
 from utils.error_handler import register_global_handler
@@ -85,7 +92,22 @@ from utils.file_utils import app_data_path
 from utils.internet import internet_available, ok
 from utils.logger import Logger
 from utils.updater import DownloadWorker, get_current_version, get_latest_release, is_newer
-from utils.email_template import WELCOME_EMAIL
+
+# Suite-root flows that used to live inline here (see the docstring
+# below) — mixed onto the class at the bottom of this file.
+from features.settings_feature import (
+    _add_user,
+    _upload_logs,
+    _on_log_upload_finished,
+    _on_log_upload_error
+)
+from features.tools_feature import (
+    _default_password,
+    _lock_excel,
+    _prepare_lock_jobs,
+    _run_excel_lock_jobs,
+    _on_excel_lock_finished,
+)
 
 # ---------------------------------------------------------------------------
 # Background workers (suite-level — login, config, updates)
@@ -252,6 +274,19 @@ class Orchestrator:
         self._nav_override = None
 
         # -----------------------------------------------------------
+        # True only once the user has actually landed inside the
+        # suite (suite home or an app home). _handle_body_clicks()
+        # calls _refresh_breadcrumb() after every click regardless of
+        # screen, so without this guard the pre-login screens (login,
+        # device code) and the update screens (prompt/downloading/
+        # error) would show a stray "Home" breadcrumb on their very
+        # first button click, before the user has actually reached
+        # anywhere the breadcrumb makes sense. Flipped back to False
+        # in start() (logout / app relaunch) so it's re-armed.
+        # -----------------------------------------------------------
+        self._suite_ready = False
+
+        # -----------------------------------------------------------
         # Per-app child orchestrators — one per suite app.
         # Each owns its own feature/tool wiring and flow methods; the
         # suite root only routes clicks to whichever app is active.
@@ -307,11 +342,22 @@ class Orchestrator:
         onto state["app"/"menu"/"feature"]; everything else is derived
         from that state so no other navigation method needs to call
         this itself.
+
+        Before the user has actually reached the suite (still on
+        login / device-code / update screens), _suite_ready is False
+        and the breadcrumb stays hidden even though this gets called
+        after every body click.
         """
-        self.body._breadcrumb.show()
         if self._nav_override:
+            self.body._breadcrumb.show()
             self.body.set_breadcrumb(self._nav_override)
             return
+
+        if not self._suite_ready:
+            self.body._breadcrumb.hide()
+            return
+
+        self.body._breadcrumb.show()
 
         app = self.state.get("app")
         if not app:
@@ -347,6 +393,7 @@ class Orchestrator:
         self.state["feature"] = None
         self.state["tool"] = None
         self._nav_override = None
+        self._suite_ready = True
         self.body.show_suite_menu()
         self._refresh_breadcrumb()
 
@@ -392,6 +439,12 @@ class Orchestrator:
                 if action == "add_user":
                     self.log.info(f"Add user triggered | email={btn[1]}")
                     self._add_user(btn[1])
+                elif action == "lock_excel":
+                    self.log.info(f"Lock Excel triggered | is_single={btn[2]}")
+                    self._lock_excel(btn[1], btn[2], btn[3])
+                elif action == "share_logs":
+                    self.log.info(f"Share Logs triggered")
+                    self._upload_logs(btn[1], btn[2], btn[3])
 
                 else:
                     self.log.warning(f"Unhandled list action | action={action}")
@@ -414,7 +467,15 @@ class Orchestrator:
             elif "util" in action:
                 self._on_suite_util_selected(action)
                 return
+            
+            elif "tool" in action:
+                self._on_suite_tool_selected(action)
+                return
 
+            elif "back" in action:
+                self.body.show_toolbox()
+                return
+            
             elif action == "suite_home":
                 self._go_suite_home()
                 return
@@ -493,6 +554,7 @@ class Orchestrator:
 
         if internet_available():
             self.log.info("Orchestrator: Internet available — showing login screen")
+            self._suite_ready = False
             self.body._breadcrumb.hide()
             self.body.show_login()
         else:
@@ -627,6 +689,7 @@ class Orchestrator:
             self.state[f"{config_type}_config"] = config
             self.log.info(f"Orchestrator: {config_type.title()} Config loaded and parsed successfully")
 
+            self._suite_ready = True
             if config_type == "payroll":
                 self.payroll_orch.go_home()
             elif config_type == "billing":
@@ -657,7 +720,7 @@ class Orchestrator:
             self._go_suite_home()
             return
 
-        self.state["latest"], asset_id = latest
+        self.state["latest"], asset_id, notes = latest
 
         if not is_newer(self.state["latest"], self.state["current"]):
             self.log.info(f"Orchestrator: Already up to date | version={self.state['current']}")
@@ -671,6 +734,7 @@ class Orchestrator:
         self.body.show_update_prompt(
             self.state["current"],
             self.state["latest"],
+            notes,
             on_confirm=lambda: self._do_update(asset_id),
         )
 
@@ -687,14 +751,34 @@ class Orchestrator:
     def _on_download_progress(self, percent: int, message: str):
         self.body.update_download_progress(percent, message)
 
-    def _on_update_done(self, success: bool):
-        if success:
-            self.log.info("Orchestrator: Installer launched — closing app")
-            self.main_window.close()
-        else:
+    def _on_update_done(self, success: bool, installer_path: str):
+        """
+        Launches the installer and kills this process on the MAIN thread.
+        This is what actually releases the lock on our own .exe before
+        Inno tries to overwrite it — doing it from the download worker's
+        QThread doesn't work (see updater.py).
+        """
+        if not success:
             self.log.warning("Orchestrator: Update download failed")
             self.body.show_update_error()
-
+            return
+       
+        self.log.info(f"Orchestrator: Installer downloaded — launching {installer_path}")
+        self._file_manager.upload_log(self.state)
+       
+        # Small delay wrapped into the launch itself so Inno doesn't start
+        # touching files until a beat after this process is actually dead —
+        # os._exit(0) below is immediate, but the installer process starts
+        # asynchronously, so without this it can still race us.
+        launch_cmd = (
+            f'cmd /c ping 127.0.0.1 -n 3 > nul && '
+            f'"{installer_path}" /VERYSILENT /NORESTART'
+        )
+       
+        subprocess.Popen(launch_cmd, shell=True, close_fds=True)
+        self.log.info("Orchestrator: Installer launch scheduled — closing app")
+        self.main_window.close()
+        os._exit(0)
     # ===================================================================
     # SUITE NAVIGATION
     # ===================================================================
@@ -705,6 +789,10 @@ class Orchestrator:
             users = self.state["app_config"]["users"]
             self._nav_override = ["Home", "Settings"]
             self.body.show_settings(users)
+            return
+        elif app == "app_toolbox":
+            self._nav_override = ["Home", "Toolbox"]
+            self.body.show_toolbox()
             return
 
         clean_app = app.replace("_app", "")
@@ -736,109 +824,18 @@ class Orchestrator:
             self._nav_override = ["Home", "Help / Support"]
             self.body.show_help()
 
-    # ===================================================================
-    # SETTINGS MAIN FLOW
-    # ===================================================================
-    def _add_user(self, email: str):
-        """
-        Add a new user to the app's allowed-users list.
+    def _on_suite_tool_selected(self, util: str):
+        """Route from the suite root's toolbox"""
+        clean_util = util.replace("_tool", "")
+        self.log.event("Orchestrator: Suite tool selected", util=clean_util)
 
-        Steps:
-        1. Validate the email (non-empty and correct domain).
-        2. Check for duplicates.
-        3. Trigger the Power Automate flow to add the user to Teams.
-        4. Send a welcome email via Graph Mail API.
-        5. Persist the updated users list to SharePoint config.
-        """
-        self.log.section("ADD USER")
-        self.log.info(f"Add user requested | email={email}")
+        root_nav = ["Home", "Toolbox"]
 
-        state = self.state["app_config"]
-        allowed_domain = get("support_email", "@intogreatsolutions.com").split("@")[1]
-
-        if not email:
-            self.log.warning("Add user — email field is empty")
-            self.body.show_settings_add_user_status("empty_error")
-            return
-
-        if allowed_domain not in email:
-            self.log.warning(f"Add user — invalid domain | email={email}")
-            self.body.show_settings_add_user_status("error_email")
-            return
-
-        if email in state["users"]:
-            self.log.warning(f"Add user — duplicate | email={email}")
-            self.body.show_settings_add_user_status("duplicate_user")
-            return
-
-        # ── Power Automate — add to Teams group ──────────────────────
-        flow_url   = state["entra"]["flow_url"]
-        pa_payload = {
-            "UserEmail": email,
-            "GroupID":   state["entra"]["teams_group"],
-            "GroupName": get("app", "Finance Suite"),
-        }
-
-        self.log.info(f"Triggering Power Automate add-user flow | email={email}")
-        pa_response = PowerAutomateService().start(flow_url, payload=pa_payload)
-
-        if not ok(pa_response):
-            self.log.warning(f"Power Automate flow failed | HTTP={pa_response.status_code}")
-            self.body.show_settings_add_user_status("add_user_error")
-            return
-
-        self.log.info("Power Automate add-user flow accepted")
-
-        # ── Update users list ────────────────────────────────
-        state["users"].append(email)
-        self.log.info(f"Persisting updated users list | total={len(state['users'])}")
-        self._config_svc = ConfigService("")
-        config_response = self._config_svc.update(state, self.state["token"])
-
-        if not ok(config_response):
-            self.log.warning(f"Power Automate flow failed | HTTP={pa_response.status_code}")
-            self.body.show_settings_add_user_status("add_user_error")
-            return
-
-        # ── Graph API — send welcome email ────────────────────────────
-        app_loc            = state["app_loc"]
-        installation_guide = state.get("installation_guide", "")
-        email_url          = "https://graph.microsoft.com/v1.0/me/sendMail"
-        email_payload      = {
-            "message": {
-                "subject": "Welcome to Finance Suite App 🎉",
-                "body": {
-                    "contentType": "HTML",
-                    "content": WELCOME_EMAIL.format(
-                        user=self.state["name"],
-                        download_link=app_loc,
-                        installation_guide=installation_guide,
-                    ),
-                },
-                "toRecipients": [{"emailAddress": {"address": email}}],
-                "bccRecipients": [{"emailAddress": {"address": get("support_email")}}],
-            }
-        }
-
-        self.log.info(f"Sending welcome email via Graph | to={email}")
-        email_response = OutlookService().send(email_url, payload=email_payload, token=self.state["token"])
-
-        if not ok(email_response):
-            self.log.warning(f"Welcome email failed | HTTP={email_response.status_code}")
-            self.body.show_settings_add_user_status("add_user_email_error")
-            return
-
-        self.log.info("Welcome email sent successfully")
-        
-        # ── Persist updated users list ────────────────────────────────
-        self.log.info(f"User added successfully | email={email}")
-        self.body.show_settings_add_user_status("add_user_success")
-        self.reload_config_silent(
-            on_done=lambda: (
-                self.body.show_settings(self.state["app_config"]["users"]),
-                self.body.show_settings_add_user_status("add_user_success"),
-            )
-        )
+        if clean_util == "excel_locker":
+            year = datetime.now().year
+            password = get("PASSWORD_PREFIX") + str(year)
+            self._nav_override  = root_nav + [clean_util.replace("_", " ").title()]
+            self.body.show_excel_locker_tool(password)
 
     # ===================================================================
     # SHARED — silent config reload (no update check)
@@ -877,4 +874,24 @@ class Orchestrator:
 
         if on_done:
             on_done()
+
+
+# ---------------------------------------------------------------------------
+# Mix in the suite-root flows split out to features/ (see the module
+# docstring at the top of this file). Assigning a plain function onto a
+# class makes it behave exactly like a method defined in the class body —
+# self._add_user(...) and self._lock_excel(...) work unchanged everywhere
+# they're already called (e.g. _dispatch_body_click below).
+# ---------------------------------------------------------------------------
+
+Orchestrator._add_user                  = _add_user
+Orchestrator._upload_logs               = _upload_logs
+Orchestrator._on_log_upload_finished    = _on_log_upload_finished
+Orchestrator._on_log_upload_error       = _on_log_upload_error
+
+Orchestrator._default_password     = _default_password
+Orchestrator._lock_excel           = _lock_excel
+Orchestrator._prepare_lock_jobs    = _prepare_lock_jobs
+Orchestrator._run_excel_lock_jobs  = _run_excel_lock_jobs
+Orchestrator._on_excel_lock_finished = _on_excel_lock_finished
 

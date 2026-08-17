@@ -19,8 +19,10 @@ render time in Body._show_status().
 Dictionaries
 ------------
 PAYROLL_STATUSES  — codes emitted by the Payroll upload + Unmand flow
+BILLING_STATUSES  — codes emitted by the Billing upload + Unmand flow
 CHECKER_STATUSES  — codes emitted by the Checker file-validation flow
 SETTINGS_STATUSES — codes emitted by the Settings (users + deminimis) flow
+EXCEL_LOCKER_STATUSES — codes emitted by the Toolbox Excel Locker flow
 DBX_TO_SPROUT_STATUSES — codes emitted by the DarwinBox to Sprout conversion flow
 ATTENDANCE_SUMMARY — codes emitted by the Attendance Summary flow
 """
@@ -153,6 +155,42 @@ CHECKER_STATUSES = {
 
 
 # ---------------------------------------------------------------------------
+# BILLING STATUSES
+# Emitted by: features/billing/billing.py [BillingFeature], the Billing
+#             SharePoint upload + Unmand flow in billing_orchestrator.py
+# Mirrors PAYROLL_STATUSES minus the payroll-only checks (attendance date
+# format, Total row, deduction column) that don't apply to Billing files.
+# ---------------------------------------------------------------------------
+
+BILLING_STATUSES = {
+
+    # ── Success ───────────────────────────────────────────────────────
+    "file_success":            "Files uploaded successfully.",
+    "unmand_init_success":     "Unmand initiated successfully. {file_name}",
+    "unmand_status_success":   "Unmand automation completed successfully. "
+                               "Please verify the generated output.",
+
+    # ── File errors ───────────────────────────────────────────────────
+    "no_file_error":           "No files selected — aborting upload.",
+    "file_exceed_error":       "Number of files exceeds the expected limit. "
+                               "Please verify your upload.",
+    "sensitivity_error":       "{file_name} sensitivity "
+                               "or password protection issue detected.",
+    "not_found_error":         "{file_name} — file not found in the upload.",
+    "upload_sp_error":         "Error uploading files to SharePoint. "
+                               "Please contact the Automation Team.",
+
+    # ── Unmand errors ─────────────────────────────────────────────────
+    "unmand_init_error":          "Failed to start Unmand. "
+                                  "Please contact the Automation Team.",
+    "unmand_status_error":        "Unmand encountered an error. "
+                                  "Please check your inbox for details.",
+    "unmand_status_pending_error": "Unmand is still processing. "
+                                   "Please check again shortly.",
+}
+
+
+# ---------------------------------------------------------------------------
 # BILLING CHECKER STATUSES
 # Emitted by: features/billing/checker.py [BillingCheckerFeature],
 #             orchestrators/billing_orchestrator.py
@@ -192,6 +230,10 @@ BILLING_CHECKER_STATUSES = {
 APP_SETTINGS_STATUSES = {
     # ── Success ───────────────────────────────────────────────────────
     "add_user_success":       "User added successfully.",
+    "upload_success":          "{file_name} log/s shared successfully.",
+    "upload_partial_success": "Logs partially shared. Some logs could not be uploaded.",
+    "uploading":              "Sharing logs...",
+
 
     # ── Save / operation errors ───────────────────────────────────────
     "add_user_error":         "Failed to add user. "
@@ -207,6 +249,48 @@ APP_SETTINGS_STATUSES = {
                               "Please check the user list above.",
     "error_value":            "Invalid input value. "
                               "Please check your entry and try again.",
+    "upload_error":           "Unable to share logs. Please try again or contact the Automation Team.",
+    "no_logs_found":          "No logs were found for the selected date range.",
+    "no_token_error":         "Authentication token is missing. Please try again.",
+    "invalid_range_error":    "Invalid date range. Please select a valid start and cutoff date.",
+    "missing_dates_error":    "Please select both a start date and a cutoff date.",
+}
+
+# ---------------------------------------------------------------------------
+# EXCEL LOCKER STATUSES
+# Emitted by: features/tools_feature.py [_lock_excel, _ExcelLockWorker],
+#             orchestrator._lock_excel
+#
+# The {file_name} slot is reused for whatever value the error is really
+# about — a file name most of the time, but a metadata-file line number
+# for the TXT-parsing errors, and the exception text for the read error.
+# Same overload already used elsewhere (see PAYROLL_STATUSES
+# "unmand_init_success").
+# ---------------------------------------------------------------------------
+
+EXCEL_LOCKER_STATUSES = {
+
+    # ── Success ───────────────────────────────────────────────────────
+    "locked_success":          "{file_name} locked successfully.",
+
+    # ── Selection / metadata errors ──────────────────────────────────
+    "no_excel_error":          "No Excel files detected in your selection.",
+    "multiple_txt_error":      "Multiple TXT files selected — choose only one.",
+    "invalid_format_error":    "Invalid format on line {file_name} of the metadata file.",
+    "empty_entry_error":       "Empty filename or password on line {file_name} of the metadata file.",
+    "invalid_filename_error":  "{file_name} — invalid filename in the metadata file (must end in .xlsx).",
+    "duplicate_entry_error":   "{file_name} — duplicate entry in the metadata file.",
+    "metadata_read_error":     "Unable to read the metadata file: {file_name}",
+
+    # ── Matching errors ───────────────────────────────────────────────
+    "not_listed_error":        "{file_name} — not listed in the metadata file.",
+    "not_uploaded_error":      "{file_name} — listed in the metadata file but not uploaded.",
+
+    # ── Locking errors ────────────────────────────────────────────────
+    "already_protected_error": "{file_name} is already password-protected or check the sensitivity.",
+    "no_password_error":       "{file_name} — no password provided.",
+    "save_cancelled_error":    "{file_name} — save location was not chosen.",
+    "failed_to_lock_error":    "{file_name} — failed to lock - please check sensitivity.",
 }
 
 

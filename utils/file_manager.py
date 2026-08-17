@@ -21,6 +21,7 @@ import os
 import shutil
 import datetime
 import requests
+from pathlib import Path
 
 from utils.file_utils import app_data_path
 from utils.app_config_user import get
@@ -139,48 +140,36 @@ class FileManager:
 
     # -------------------------------------------------------------------------
     # 2. UPLOAD LOG
-
-    def upload_log(self, state: dict) -> bool:
-        """
-        Uploads today's session log to SharePoint.
-        Silently returns False if any prerequisite is missing.
-        """
-        self.log.section("LOG UPLOAD")
-        self.log.info("FileManager: Uploading session log")
-
+    def _upload_single_file(self, state: dict, file_path: Path) -> bool:
         if not self.sp_base_url:
             self.log.warning("FileManager: SP_BASE_URL not set — skipping")
             return False
-
+        
         token = state.get("token")
         if not token:
             self.log.warning("FileManager: No token in state — skipping")
             return False
-
+        
         config     = state.get("app_config") or {}
         log_folder = config.get("log_folder")
+        
         if not log_folder:
             self.log.warning("FileManager: log_folder missing from config — skipping")
             return False
-
-        log_file_path = self._resolve_log_file()
-        if not log_file_path:
-            self.log.warning("FileManager: No log file found for today — skipping")
-            return False
-
+        
         try:
-            with open(log_file_path, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
         except Exception as e:
             self.log.warning(f"FileManager: Couldn't read log file — {e}", error=e)
             return False
+        
+        file_date = self._parse_file_date(file_path.name) or datetime.datetime.now()
+        date_path = file_date.strftime("%Y/%m/%d")
 
-        log_file_name = os.path.basename(log_file_path)
-        date_path     = datetime.datetime.now().strftime("%Y/%m/%d")
-        url           = f"{self.sp_base_url}root:/{log_folder}/{date_path}/{log_file_name}:/content"
-
-        self.log.info(f"FileManager: Uploading | {log_file_name} → {log_folder}/{date_path}")
-
+        url       = f"{self.sp_base_url}root:/{log_folder}/{date_path}/{file_path.name}:/content"
+        self.log.info(f"FileManager: Uploading | {file_path.name} → {log_folder}/{date_path}")
+        
         try:
             response = SharePointService(token).put_file(url=url, data=content, content_type="text/plain")
         except requests.exceptions.Timeout:
@@ -189,11 +178,82 @@ class FileManager:
         except Exception as e:
             self.log.warning(f"FileManager: Upload failed — {e}", error=e)
             return False
-
+        
         success = 200 <= response.status_code < 300
-        self.log.result("upload_log", success=success, detail=f"HTTP {response.status_code}")
-        return success
+        self.log.result("upload_single_file", success=success, detail=f"{file_path.name} → HTTP {response.status_code}")
 
+        return success
+    
+    def upload_log(self, state: dict):
+        """
+        Uploads today's session log to SharePoint.
+        Returns (success: bool, filename: str | None).
+        """
+        self.log.section("LOG UPLOAD")
+        self.log.info("FileManager: Uploading session log")
+        log_file_path = self._resolve_log_file()
+
+        if not log_file_path:
+            self.log.warning("FileManager: No log file found for today — skipping")
+            return False, None
+        
+        file_path = Path(log_file_path)
+        success = self._upload_single_file(state, file_path)
+        return success, file_path.name
+
+    def upload_logs_range(self, state: dict, start_date, end_date) -> dict:
+        self.log.section("LOG UPLOAD — RANGE")
+        self.log.info(f"FileManager: Uploading logs | {start_date} → {end_date}")
+
+        if start_date > end_date:
+            start_date, end_date = end_date, start_date
+
+        counts = {"uploaded": 0, "failed": 0, "filename":f"{start_date} - {end_date}"}
+        current_date = start_date
+
+        while current_date <= end_date:
+            files = self._files_for_date(current_date)
+            if not files:
+                self.log.debug(f"FileManager: No logs found | {current_date}")
+            for file_path in files:
+                success = self._upload_single_file(state, file_path)
+                counts["uploaded" if success else "failed"] += 1
+            current_date += datetime.timedelta(days=1)
+
+        self.log.result(
+            step="upload_logs_range",
+            success=(counts["failed"] == 0),
+            detail=f"uploaded={counts['uploaded']} failed={counts['failed']}"
+        )
+
+        return counts
+
+    def _files_for_date(self, target_date):
+        today = datetime.datetime.now().date()
+        if target_date == today:
+            folder = Path(self._data_root) / "logs"
+        else:
+            folder = (
+                Path(self._archive_root)
+                / target_date.strftime("%Y")
+                / target_date.strftime("%m")
+                / target_date.strftime("%d")
+                / "logs"
+            )
+
+        if not folder.exists():
+            return []
+        
+        matches = []
+        for f in sorted(folder.iterdir()):
+            if not f.is_file():
+                continue
+            
+            file_date = self._parse_file_date(f.name)
+            if file_date and file_date.date() == target_date:
+                matches.append(f)
+
+        return matches
     # -------------------------------------------------------------------------
     # Private helpers
 
@@ -221,22 +281,25 @@ class FileManager:
             return False
 
     def _resolve_log_file(self) -> str | None:
-        """
-        Finds today's session log file in the logs directory.
-        Returns the full path, or None if nothing matches.
-        """
         logs_dir  = os.path.join(self._data_root, "logs")
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        today     = datetime.datetime.now().date()
 
         if not os.path.exists(logs_dir):
             return None
+        candidates = []
 
         for file_name in os.listdir(logs_dir):
             file_path = os.path.join(logs_dir, file_name)
+
             if not os.path.isfile(file_path):
                 continue
-            parsed_date = self._parse_file_date(file_name)
-            if parsed_date and parsed_date.strftime("%Y-%m-%d") == today_str:
-                return file_path
 
-        return None
+            parsed_date = self._parse_file_date(file_name)
+            if parsed_date and parsed_date.date() == today:
+                candidates.append((parsed_date, file_path))
+
+        if not candidates:
+            return None
+        
+        candidates.sort(key=lambda pair: pair[0])
+        return candidates[-1][1]   # latest timestamp for today

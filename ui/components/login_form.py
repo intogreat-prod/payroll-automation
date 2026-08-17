@@ -48,7 +48,7 @@ class LoginForm(QWidget):
         self._device_code_label.hide()
 
         # --- Login button ---
-        login_btn = UIFactory.button("Log in", self._on_login_callback, "payroll_button")
+        self._login_btn = UIFactory.button("Log in", self._on_login_btn_click, "payroll_button")
 
         # --- Error labels (hidden until needed) ---
         self._error_login = UIFactory.label("", color="red", align="center", selectable=True)
@@ -69,7 +69,7 @@ class LoginForm(QWidget):
         layout.addWidget(subtitle)
         layout.addWidget(self._device_code_label)
         layout.addStretch(10)
-        layout.addWidget(login_btn)
+        layout.addWidget(self._login_btn)
         layout.addWidget(self._error_login)
         layout.addWidget(self._error_download)
         layout.addWidget(self._error_json)
@@ -84,15 +84,18 @@ class LoginForm(QWidget):
     # ===================================================================
 
     def show_device_code(self, payload):
+        self._reset_login_btn()
         self._device_code_label.setText(f"   Enter Code: {payload.get('user_code')}")
         self._device_code_label.show()
         webbrowser.open(payload.get('url'))
 
     def show_error_login(self, error):
+        self._reset_login_btn()
         self._error_login.setText(str(error))
         self._error_login.show()
 
     def show_error_download(self):
+        self._reset_login_btn()
         self._error_download.setText(
             "Failed to download the configuration file. "
             f'<a href="mailto:{self._support_email}?subject=Config Download Error">'
@@ -101,6 +104,7 @@ class LoginForm(QWidget):
         self._error_download.show()
 
     def show_error_json(self):
+        self._reset_login_btn()
         self._error_json.setText(
             "Invalid JSON format. Please check the file structure. "
             f'<a href="mailto:{self._support_email}?subject=JSON Format Error">'
@@ -109,6 +113,15 @@ class LoginForm(QWidget):
         self._error_json.show()
 
     def show_restricted_user(self):
+        self._reset_login_btn()
         self._restricted_user.setText('This user account is not authorized to access the system.')
         self._restricted_user.show()
 
+    def _on_login_btn_click(self):
+        self._login_btn.setText("Logging in...")
+        self._login_btn.setEnabled(False)
+        self._on_login_callback()
+
+    def _reset_login_btn(self):
+        self._login_btn.setText("Log in")
+        self._login_btn.setEnabled(True)
