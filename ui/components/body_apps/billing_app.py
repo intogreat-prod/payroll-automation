@@ -13,18 +13,23 @@ When Billing gets real features, replace the relevant show_coming_soon()
 call in billing_orchestrator.py with a proper show_*_feature() screen
 (mirroring PayrollBody), the same way PayrollBody's screens were built out.
 
+Attendance Summary (formerly "Attendance Adjustment", formerly a Tool)
+now lives under the Features menu instead of Tools — it no longer hands
+off to Unmand, so it belongs alongside Billing Automation / Check
+Variance rather than in the (currently empty) Tools menu.
+
 Same composition pattern as PayrollBody: not a QWidget, holds a reference
 to Body via `self.body` and borrows its layout/clear/resize/emit helpers.
 """
 
 from PyQt6.QtWidgets import (
-    QScrollArea, QWidget, QVBoxLayout,
-    QLabel, QFrame, QProgressBar, QHBoxLayout
+    QVBoxLayout, QFrame, QProgressBar, QHBoxLayout, QTabWidget, QWidget
 )
 
+from PyQt6.QtCore import QDate
 
 from ui.styles import STYLES
-from ui.statuses import BILLING_STATUSES, BILLING_CHECKER_STATUSES, parse_status_code
+from ui.statuses import BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES, parse_status_code
 from ui.ui_factory import UIFactory
 
 
@@ -34,14 +39,21 @@ class BillingBody:
         self.body = body
 
         self.height = {
-            "billing": 820,
+            "billing_input": 950,
+            "billing_output": 850,
+            "att_adj": 770,
             "checker": 770,
-            "settings": 520,
+            "settings": 550,
         }
 
         # Set by show_billing_feature() so show_billing_status() can size
         # the window to fit the required-files list, mirroring PayrollBody.
         self.billing_required_files_len = 0
+
+        # Set by show_attendance_summary_feature() so
+        # show_attendance_adjustment_status() can size the window to fit
+        # the required-files list.
+        self.att_file_count = 0
 
     # ===================================================================
     # SCREEN 7 — BILLING MENU SELECTION
@@ -77,7 +89,7 @@ class BillingBody:
 
         col, layout = UIFactory.button_column(
             [
-                ("Start Automation", lambda: self.body._emit_clicked("billing_feature"), "payroll_button" ),
+                ("Start Automation", lambda: self.body._emit_clicked("billing_feature"), "payroll_button"),
                 ("Check Variance", lambda: self.body._emit_clicked("checker_feature"), "payroll_button"),
                 ("Settings", lambda: self.body._emit_clicked("settings_feature"), "payroll_button"),
                 ("◀ Back", lambda: self.body._emit_clicked("back"), "payroll_button"),
@@ -97,7 +109,7 @@ class BillingBody:
 
         col, layout = UIFactory.button_row(
             [
-                ("Start Automation", lambda: self.body._emit_clicked("billing_feature"), "payroll_button" ),
+                ("Start Automation", lambda: self.body._emit_clicked("billing_feature"), "payroll_button"),
                 ("Check Variance", lambda: self.body._emit_clicked("checker_feature"), "payroll_button"),
                 ("Settings", lambda: self.body._emit_clicked("settings_feature"), "payroll_button"),
                 ("◀ Back", lambda: self.body._emit_clicked("back"), "payroll_button"),
@@ -116,8 +128,10 @@ class BillingBody:
     # ===================================================================
     def show_tools(self):
         """
-        Billing app's Tools menu. Nothing's scaffolded here yet, so the
-        only option routes straight to show_coming_soon().
+        Billing app's Tools menu. Attendance Summary moved out to
+        Features (it's a local-only generation flow now, not an
+        Unmand hand-off tool) — nothing else is scaffolded here yet,
+        so this is effectively a placeholder with just Back.
         """
         self.body._clear()
         self.body._resize(350, 400)
@@ -130,7 +144,7 @@ class BillingBody:
 
         col, layout = UIFactory.button_column(
             [
-                ("Coming Soon", lambda: self.body._emit_clicked("billing_tools_tool"), "payroll_button"),
+                ("Attendance Adjustment", lambda: self.body._emit_clicked("attendance_adjustment_tool"), "payroll_button"),
                 ("◀ Back",       lambda: self.body._emit_clicked("back"),  "payroll_button"),
             ],
             spacing=12,
@@ -141,6 +155,23 @@ class BillingBody:
         layout.addStretch()
         tools_layout.addWidget(col)
         self.body._layout.addLayout(tools_layout)
+
+    def _horizontal_menu_tools(self):
+        self.body._layout.setSpacing(8)
+        self.body.setStyleSheet(STYLES["body_clear"])
+
+        col, layout = UIFactory.button_row(
+            [
+                ("Attendance Adjustment", lambda: self.body._emit_clicked("attendance_adjustment_tool"), "payroll_button"),
+                ("◀ Back",       lambda: self.body._emit_clicked("back"),  "payroll_button"),
+            ],
+            spacing=12,
+            parent=self.body,
+            con_style_key=STYLES['body_clear']
+        )
+        layout.addStretch()
+        col.setStyleSheet(STYLES['body'])
+        self.body._layout.addWidget(col)
 
     # ===================================================================
     # SCREEN 10 — COMING SOON PLACEHOLDER
@@ -205,8 +236,10 @@ class BillingBody:
         automation_layout.addWidget(UIFactory.label("Automation Files", style_key="header_label"))
         col, btn_row = UIFactory.button_column(
             [
-                ("Client Billing Information", lambda: self.body._emit_clicked("client_billing_info"), "payroll_button"),
-                ("Discounts and Maternity", lambda: self.body._emit_clicked("discounts"), "payroll_button"),
+                ("Client Billing Information", lambda: self.body._emit_clicked("client_billing_info_bill"), "payroll_button"),
+                ("Discounts and Maternity", lambda: self.body._emit_clicked("discounts_bill"), "payroll_button"),
+                ("Others", lambda: self.body._emit_clicked("others_bill"), "payroll_button"),
+
             ],
             spacing=8,
             margin=(0, 0, 0, 0),
@@ -227,7 +260,7 @@ class BillingBody:
         self._horizontal_automation_menu()
 
         self.body._layout.setContentsMargins(10, 10, 10, 10)
-        self.body._resize(530, self.height['billing'] + (self.billing_required_files_len * 10))
+        self.body._resize(530, self.height['billing_input'] + (self.billing_required_files_len * 10))
 
         content = QFrame()
         content.setObjectName("featureContent")
@@ -248,33 +281,97 @@ class BillingBody:
         )
         content_layout.addSpacing(6)
 
-        # ── Versioning ──────────────────────────────────────────────
-        versioning_con = QFrame()
-        versioning_con.setStyleSheet(STYLES["standard_container"])
+        # ── Billing Month ──────────────────────────────────────────────
+        billing_month_con = QFrame()
+        billing_month_con.setStyleSheet(STYLES["standard_container"])
 
-        versioning_layout = QVBoxLayout(versioning_con)
-        versioning_layout.setContentsMargins(12, 12, 12, 12)
-        versioning_layout.setSpacing(6)
+        billing_month_layout = QVBoxLayout(billing_month_con)
+        billing_month_layout.setContentsMargins(12, 12, 12, 12)
+        billing_month_layout.setSpacing(6)
 
-        versioning_layout.addWidget(
-            UIFactory.label("🏷️ Run ID", color="white", font_weight="bold", font_size=15)
+        billing_month_layout.addWidget(
+            UIFactory.label("🗓️ Billing Month", color="white", font_weight="bold", font_size=15)
         )
-        versioning_layout.addWidget(
+        billing_month_layout.addWidget(
             UIFactory.label(
-                "Enter a Run ID to tag this upload, or leave it blank to auto-generate one.",
+                "Select the billing month to consolidate bills.",
                 color="white",
                 font_size=11,
                 padding_bottom=6,
             )
         )
 
-        id_input = UIFactory.input("e.g., 20260422_071827")
-        versioning_layout.addWidget(id_input)
+        self.body.billing_month = UIFactory.month_picker(
+            default_date=QDate.currentDate(),
+            width=90,
+            style_key='month_picker'
+        )
+        billing_month_layout.addWidget(self.body.billing_month)
 
-        content_layout.addWidget(versioning_con)
+        content_layout.addWidget(billing_month_con)
         content_layout.addSpacing(6)
 
-        # ── Required Files Frame ────────────────────────────────────
+        # ── Currencies ──────────────────────────────────────────────
+        currencies_con = QFrame()
+        currencies_con.setStyleSheet(STYLES["standard_container"])
+
+        currencies_layout = QVBoxLayout(currencies_con)
+        currencies_layout.setContentsMargins(12, 12, 12, 12)
+
+        currencies_title = UIFactory.label("🪙 Currencies", color="white", font_weight="bold", font_size=15)
+        currencies_layout.addWidget(currencies_title)
+
+        currencies_desc = UIFactory.label(
+            "Set the exchange rates to be used for billing conversion.",
+            color="white",
+            font_size=11,
+            padding_bottom=6,
+        )
+        currencies_layout.addWidget(currencies_desc)
+
+        currency_row = QHBoxLayout()
+        currencies = ["AUD", "USD", "EUR"]
+
+        for currency in currencies:
+            currency_con = QVBoxLayout()
+            currency_con.setSpacing(6)
+
+            currency_label = UIFactory.label(
+                f"{currency} to PHP",
+                color="white",
+                font_weight="bold",
+                font_size=12,
+                align="center"
+            )
+
+            currency_input = UIFactory.input("")
+
+            currency_con.addWidget(currency_label)
+            currency_con.addWidget(currency_input)
+
+            currency_row.addLayout(currency_con, 1)
+
+            currencies_layout.addLayout(currency_row)
+
+        content_layout.addWidget(currencies_con)
+        content_layout.addSpacing(6)
+
+        # ── Tabs (Input / Output) ──────────────────────────────────────
+        self.billing_tabs = QTabWidget()
+        self.billing_tabs.setStyleSheet(STYLES["tab_widget"])
+
+        # ── Input Tab ─────────────────────────────────────────────────
+        input_tab = QWidget()
+        input_layout = QVBoxLayout(input_tab)
+        input_layout.setContentsMargins(12, 12, 12, 12)
+        input_layout.setSpacing(8)
+
+        input_layout.addWidget(UIFactory.label(
+            "Upload the required Excel files below for billing processing.",
+            style_key="standard",
+            word_wrap=True
+        ))
+
         required_con = QFrame()
         required_con.setStyleSheet(STYLES["standard_container"])
 
@@ -310,12 +407,34 @@ class BillingBody:
         columns.addLayout(notes_layout, 1)
         required_layout.addLayout(columns)
 
-        content_layout.addWidget(required_con)
-        content_layout.addStretch()
+        input_layout.addWidget(required_con)
+        input_layout.addStretch()
 
-        # ---------------------------------------------------------------
-        # PRIMARY — Upload button (with processing state)
-        # ---------------------------------------------------------------
+        # ── Output Tab ────────────────────────────────────────────────
+        output_tab = QWidget()
+        output_layout = QVBoxLayout(output_tab)
+        output_layout.setContentsMargins(12, 12, 12, 12)
+        output_layout.setSpacing(8)
+
+        output_layout.addWidget(UIFactory.label(
+            "Once processed, the billing output file will appear here for review "
+            "and can be sent to Unmand for further handling.",
+            style_key="standard",
+            word_wrap=True
+        ))
+        output_layout.addStretch()
+
+        self.billing_tabs.addTab(input_tab, "Input")
+        self.billing_tabs.addTab(output_tab, "Output")
+
+        self.billing_tabs.currentChanged.connect(
+            lambda _: self._on_billing_tabs_changed(self.billing_required_files_len)
+        )
+
+        content_layout.addWidget(self.billing_tabs)
+        content_layout.addSpacing(6)
+
+        # ── Buttons (fixed, outside tabs) ───────────────────────────────
         self.billing_upload_btn = UIFactory.button(
             "Upload",
             lambda: self._on_billing_upload_btn_click(id_input),
@@ -323,9 +442,6 @@ class BillingBody:
         )
         content_layout.addWidget(self.billing_upload_btn)
 
-        # ---------------------------------------------------------------
-        # AUX BUTTONS — registered with the dynamic visibility system
-        # ---------------------------------------------------------------
         billing_unmand_btn = UIFactory.button(
             "Send to Unmand",
             lambda: self.body._emit_clicked("send_unmand"),
@@ -333,7 +449,7 @@ class BillingBody:
         )
         content_layout.addWidget(billing_unmand_btn)
         self.body._register_aux_button("billing", "billing_unmand", billing_unmand_btn,
-                                  visible_on=["file_success"])
+                                visible_on=["file_success"])
 
         check_unmand_btn = UIFactory.button(
             "Check Unmand Status",
@@ -342,7 +458,7 @@ class BillingBody:
         )
         content_layout.addWidget(check_unmand_btn)
         self.body._register_aux_button("billing", "check_unmand_btn", check_unmand_btn,
-                                  visible_on=["unmand_init_success", "unmand_status_pending_error"])
+                                visible_on=["unmand_init_success", "unmand_status_pending_error"])
 
         open_output_btn = UIFactory.button(
             "Open Output",
@@ -351,15 +467,25 @@ class BillingBody:
         )
         content_layout.addWidget(open_output_btn)
         self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
-                                  visible_on=["unmand_status_success"])
+                                visible_on=["unmand_status_success"])
 
-        # Status labels
         for key, status in BILLING_STATUSES.items():
             lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
             lbl.hide()
             content_layout.addWidget(lbl)
 
+        content_layout.addStretch()
+
         self.body._layout.addWidget(content)
+
+    def _billing_tabs_height(self, required_files):
+        """Input has the required-files block, Output is just a description,
+        so Input needs more vertical room."""
+        is_output = getattr(self, "billing_tabs", None) and self.billing_tabs.currentIndex() == 1
+        return self.height["billing_output"] if is_output else self.height["billing_input"] + (required_files * 10)
+
+    def _on_billing_tabs_changed(self, required_files):
+        self.body._resize(530, self._billing_tabs_height(required_files))
 
     def _on_billing_upload_btn_click(self, id_input):
         """Handle Upload button click: switch to processing state, then emit."""
@@ -583,6 +709,240 @@ class BillingBody:
 
         if status_code != "file_success":
             self.body._set_btn_default(self.checker_upload_btn)
+
+    # ===================================================================
+    # SCREEN 13 — ATTENDANCE SUMMARY TOOL
+    # ===================================================================
+    def show_attendance_adjustment_tool(self, required_files):
+        self.body._clear()
+        self._horizontal_automation_menu()
+
+        self.att_file_count = len(required_files)
+
+        self.body._layout.setContentsMargins(10, 10, 10, 10)
+        self.body._resize(530, self.height['att_adj'] + self.att_file_count * 10)
+
+        content = QFrame()
+        content.setObjectName("featureContent")
+        content.setStyleSheet(STYLES["feature_content"])
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+
+        content_layout.addWidget(UIFactory.label("Attendance Summary", color='white', font_weight="bold", font_size=17))
+        content_layout.addWidget(
+            UIFactory.label(
+                "Pre-checks and formats the attendance and payroll files, computes \n"
+                "the attendance adjustment, and generates the output locally.",
+                font_size=11, color='white'
+            )
+        )
+        content_layout.addSpacing(6)
+
+        # ── Currencies ──────────────────────────────────────────────
+        currencies_con = QFrame()
+        currencies_con.setStyleSheet(STYLES["standard_container"])
+        
+        currencies_layout = QVBoxLayout(currencies_con)
+        currencies_layout.setContentsMargins(12, 12, 12, 12)
+        
+        currencies_title = UIFactory.label("ℹ️ Details", color="white", font_weight="bold", font_size=15)
+        currencies_layout.addWidget(currencies_title)
+        
+        currencies_desc = UIFactory.label(
+            "Set the AUD to PHP exchange rate and the Month.",
+            color="white",
+            font_size=11,
+            padding_bottom=6,
+        )
+        currencies_layout.addWidget(currencies_desc)
+        
+        currency_row = QHBoxLayout()
+
+        currency_con = QVBoxLayout()
+        currency_con.setSpacing(3)
+
+        currency_label = UIFactory.label(
+            "AUD to PHP",
+            color="white",
+            font_weight="bold",
+            font_size=12,
+            align="center"
+        )
+
+        self.exchange_rate_input = UIFactory.input("41.6698", align="center")
+
+        currency_con.addWidget(currency_label)
+        currency_con.addWidget(self.exchange_rate_input)
+
+        month_con = QVBoxLayout()
+        month_con.setSpacing(3)
+
+        att_label = UIFactory.label(
+            "Month",
+            color="white",
+            font_weight="bold",
+            font_size=12,
+            align="center"
+        )
+
+        self.attendance_month = UIFactory.month_picker(
+                    default_date=QDate.currentDate(),
+                    width=90,
+                    style_key='month_picker'
+                )
+
+        month_con.addWidget(att_label)
+        month_con.addWidget(self.attendance_month )
+
+        rates_con = QVBoxLayout()
+        rates_con.setSpacing(3)
+        
+        rates_label = UIFactory.label(
+            "Rates",
+            color="white",
+            font_weight="bold",
+            font_size=12,
+            align="center"
+        )
+        
+        rates_btn = UIFactory.button("Payroll Headers and Rates",
+                                     lambda: self._on_att_adj_generate_btn_click(),
+                                     style_key="payroll_button")
+        
+        rates_con.addWidget(rates_label)
+        rates_con.addWidget(rates_btn)
+
+        
+        currency_row.addLayout(month_con, 1)
+        currency_row.addLayout(currency_con, 1)
+        currency_row.addLayout(rates_con, 1)
+
+        currencies_layout.addLayout(currency_row)
+        
+        content_layout.addWidget(currencies_con)
+        content_layout.addSpacing(6)
+
+        # ── Required ───────────────────────────────────────────────────────
+        required_con = QFrame()
+        required_con.setStyleSheet(STYLES["standard_container"])
+
+        required_layout = QVBoxLayout(required_con)
+        required_layout.setContentsMargins(12, 12, 12, 12)
+        required_layout.setSpacing(3)
+
+        required_layout.addWidget(UIFactory.label("🗂️ Required Files", style_key="header_label"))
+
+        required_layout.addWidget(UIFactory.label(
+                "Upload the required Excel files below to consolidate payroll registers.",
+                style_key="standard",
+                word_wrap=True
+            ))
+
+        columns = QHBoxLayout()
+        columns.setSpacing(24)
+
+        files_layout = QVBoxLayout()
+        files_layout.setSpacing(1)
+        for t in required_files:
+            files_layout.addWidget(UIFactory.label(f"• {t}", font_size=11, color="rgba(200, 200, 200, 1)"))
+
+        notes_layout = QVBoxLayout()
+        notes_layout.setSpacing(4)
+        notes_layout.addWidget(UIFactory.label(
+            "Note:\n"
+            "• Headers in Row 1; single sheet.\n"
+            "• File type must be .xlsx\n"
+            "• Sensitivity should be set to Public\n"
+            "• The file should not be password-protected.\n"
+            "• If required, use INTOGREAT[YYYY].\n",
+            style_key="standard_red",
+            word_wrap=True,
+            align="left"
+        ))
+
+        columns.addLayout(files_layout, 30)
+        columns.addLayout(notes_layout, 70)
+        required_layout.addLayout(columns)
+
+        content_layout.addWidget(required_con)
+        content_layout.addStretch()
+
+        # ── Action buttons ─────────────────────────────────────────────────
+        self.att_adj_generate_btn = UIFactory.button(
+            "Upload",
+            lambda: self._on_att_adj_generate_btn_click(),
+            "payroll_button"
+        )
+        content_layout.addWidget(self.att_adj_generate_btn)
+
+        open_output_btn = UIFactory.button(
+            "Open Output",
+            lambda: self.body._emit_clicked("open_att_adj_output"),
+            "payroll_button"
+        )
+        content_layout.addWidget(open_output_btn)
+
+        self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
+                                    visible_on=["generated_success"])
+
+        # Status labels
+        for key, status in ATT_ADJ_STATUSES.items():
+            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
+            lbl.hide()
+            content_layout.addWidget(lbl)
+
+        self.body._layout.addWidget(content)
+
+    def _on_att_adj_generate_btn_click(self):
+        """Handle Generate button click: switch to processing state, then emit."""
+        self.body._set_btn_processing(self.att_adj_generate_btn, "Processing...")
+        self.body._hide_aux_buttons()
+        self.body._hide_statuses()
+        self.body._emit_clicked("attendance_summary_generate")
+
+    def show_attendance_adjustment_status(self, codes):
+        """
+        Render status labels for the Attendance Summary screen and
+        reveal aux buttons. Mirrors show_billing_status() — this flow
+        has a single terminal state ("generated_success") once local
+        generation finishes.
+        """
+        # Remove the shared processing progress widgets if they exist
+        self.body._main_window.stop_progress_heartbeat()
+        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                self.body._layout.removeWidget(widget)
+                widget.deleteLater()
+                setattr(self, attr, None)
+
+        self.body._hide_statuses()
+        result_count = 0
+        status_code  = ""
+
+        for code in codes:
+            file_name, status_code = parse_status_code(code)
+            message_template = ATT_ADJ_STATUSES.get(status_code, status_code)
+            message = message_template.format(file_name=file_name or "")
+            result_count += 1
+
+            stat = UIFactory.label(
+                message,
+                color="red" if "error" in status_code else "green",
+                align="center",
+                selectable=True
+            )
+            self.body.statuses["billing"][code] = stat
+            stat.show()
+            self.body._layout.addWidget(stat)
+
+            self.body._show_aux_buttons_for("billing", status_code)
+
+        self.body._resize(530, self.height['att_adj'] + (self.att_file_count * 10) + (result_count * 10))
+
+        if status_code != "file_success":
+            self.body._set_btn_default(self.att_adj_generate_btn)
 
     # ===================================================================
     # PROCESSING PROGRESS BAR (Checker)

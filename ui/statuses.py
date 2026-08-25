@@ -254,6 +254,7 @@ APP_SETTINGS_STATUSES = {
     "no_token_error":         "Authentication token is missing. Please try again.",
     "invalid_range_error":    "Invalid date range. Please select a valid start and cutoff date.",
     "missing_dates_error":    "Please select both a start date and a cutoff date.",
+    "empty_selection_error":  "Please select app version to install.",
 }
 
 # ---------------------------------------------------------------------------
@@ -354,4 +355,41 @@ ATTENDANCE_SUMMARY = {
 
     # ── Processing Error ────────────────────────
     "processing_error": "The tool ecountered an error. Please contact support.",
+}
+
+# ---------------------------------------------------------------------------
+# DARWINBOX TO SPROUT STATUSES
+# Emitted by: features/dbx_sprout.py [DarwinToSproutTool], 
+#             orchestrator._generate_conversion
+# ---------------------------------------------------------------------------
+
+ATT_ADJ_STATUSES = {
+
+    # ── Success ───────────────────────────────────────────────────────
+    "file_success":           "File added successfully.",
+    "generated_success":      "Attendance Adjustment generated successfully.",
+
+    # ── File count / identity errors ──────────────────────────────────
+    "no_file_error":          "No file selected — aborting upload.",
+    "file_exceed_error":      "Number of file exceeds the expected limit "
+                              "of 3. Please verify your upload.",
+
+    # ── Structural errors ─────────────────────────────────────────────
+    "missing_header_error":   "{file_name} — Missing Row 1 Header.",
+    "missing_total_error":    "{file_name} — Missing Total row in "
+                              "the Employee ID column.",
+    "sensitivity_error":      "File sensitivity or password protection "
+                              "issue detected in {file_name}.",
+    "not_found_error":        "{file_name} — file not found in the upload.",
+    "emp_id_not_found_error": "Employee ID(s) not found in Employee List: {file_name}",
+    "currency_format_error":  "Exchange rate has an invalid format.",
+    "empty_currency_error":   "Exchange rate is missing.",
+
+    # ── SharePoint / Unmand errors ──────────────────────────────────────
+    "headers_sensitivity_error":    "Please check the sensivity of the Payroll Premium Headers.xlsx Source: {file_name} ",
+    "premium_download_error":       "Payroll Premium Headers.xlsx cannot be downloaed. Please Contact the Automation Team.",
+    "upload_sp_error":              "Error uploading files to SharePoint. "
+                                    "Please contact the Automation Team.",
+    "unmand_init_error":            "Failed to start Unmand. "
+                                    "Please contact the Automation Team.",
 }

@@ -94,7 +94,7 @@ class Body(QWidget):
         }
 
         self.height = {
-            "settings": 850,
+            "settings": 970,
             "excel_locker_single": 670,
             "excel_locker_multiple": 750,
         }
@@ -618,7 +618,8 @@ class Body(QWidget):
 
         # Hint text
         self._layout.addWidget(UIFactory.label(
-            "Please do not close the application.",
+            "Please do not close the application and \n"
+            "wait the suite to restart by itself. \n",
             style_key="standard_red",
             align="center"
         ))
@@ -746,48 +747,6 @@ class Body(QWidget):
         elif error == "json_error":
             self._error_json.setText(f"Invalid JSON format. Please check the {config.title()} config file structure. ")
         self._error_json.show()
-
-    # ===================================================================
-    # ACTIONS ON CLICK
-    # ===================================================================
-    def _on_add_user_clicked(self, email):
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self._emit_clicked(['add_user', email])
-
-    def _on_share_logs_clicked(self):
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self.share_logs_btn.setDisabled(True)
-        self.share_logs_btn.setText("Sharing...")
-
-        current_file = self.share_logs_current_cbox.isChecked()
-        start_date = self.start_date.date().toPyDate()
-        end_date = self.end_date.date().toPyDate()
-        self._emit_clicked(["share_logs", current_file, start_date, end_date])
-
-    def _on_excel_locker_upload_btn_click(self):
-        is_single = self.excel_locker_tabs.currentIndex() == 0
-
-        if is_single:
-            password = self.excel_locker_single_password.text().strip()
-            create_copy = self.excel_locker_single_create_copy.isChecked()
-            self._set_btn_processing(self.excel_locker_single_upload_btn, "Locking...")
-        else:
-            password = self.excel_locker_multiple_password.text().strip()
-            create_copy = self.excel_locker_multiple_create_copy.isChecked()
-            self._set_btn_processing(self.excel_locker_multiple_upload_btn, "Locking...")
-
-        self._hide_aux_buttons()
-        self._hide_statuses()
-        self.excel_locker_status.hide()
-
-        self._emit_clicked([
-            'lock_excel',
-            password,
-            is_single,
-            create_copy
-        ])
 
 
     # ===================================================================
@@ -951,7 +910,7 @@ class Body(QWidget):
     # ===================================================================
     # SCREEN 5 — SUITE ROOT
     # ===================================================================
-    def show_settings(self, users):
+    def show_settings(self, users, current_version="", releases=None):
         self._clear()
         self._layout.setContentsMargins(10, 10, 10, 10)
         self._resize(530, self.height["settings"])
@@ -961,7 +920,7 @@ class Body(QWidget):
         content.setStyleSheet(STYLES["feature_content"])
 
         content_layout = QVBoxLayout(content)
-        content_layout.setSpacing(4)
+        content_layout.setSpacing(2)
         content_layout.setContentsMargins(10, 10, 10, 10)
 
         content_layout.addWidget(
@@ -979,7 +938,7 @@ class Body(QWidget):
         users_con.setStyleSheet(STYLES["standard_container"])
 
         users_layout = QVBoxLayout(users_con)
-        users_layout.setSpacing(2)
+        users_layout.setSpacing(1)
         users_layout.setContentsMargins(12, 12, 12, 12)
 
         users_layout.addWidget(
@@ -993,12 +952,12 @@ class Body(QWidget):
                 font_size=11, color='white'
             )
         )
-        users_layout.addSpacing(4)
+        users_layout.addSpacing(2)
 
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(120)
+        scroll.setFixedHeight(100)
         scroll.setStyleSheet(STYLES["settings_scroll"])
 
         scroll_content = QWidget()
@@ -1018,13 +977,13 @@ class Body(QWidget):
 
         scroll.setWidget(scroll_content)
         users_layout.addWidget(scroll)
-        users_layout.addSpacing(4)
+        users_layout.addSpacing(2)
 
         self.add_user_input = UIFactory.input(
             "Add a user (e.g., jdelacruz@intogreatsolutions.com)"
         )
         users_layout.addWidget(self.add_user_input)
-        users_layout.addSpacing(4)
+        users_layout.addSpacing(2)
 
         self.add_user_btn = UIFactory.button(
             "Add User",
@@ -1038,7 +997,7 @@ class Body(QWidget):
         users_layout.addWidget(self.add_user_btn)
 
         content_layout.addWidget(users_con)
-        content_layout.addSpacing(8)
+        content_layout.addSpacing(4)
 
         # ── Date row: [Start] → [Cutoff] ────────────────────────────────────
         # ── Logs frame ─────────────────────────────────────────────────────────
@@ -1046,7 +1005,7 @@ class Body(QWidget):
         logs_con.setStyleSheet(STYLES["standard_container"])
 
         logs_layout = QVBoxLayout(logs_con)
-        logs_layout.setSpacing(4)
+        logs_layout.setSpacing(2)
         logs_layout.setContentsMargins(12, 12, 12, 12)
 
         logs_layout.addWidget(
@@ -1060,12 +1019,11 @@ class Body(QWidget):
                 font_size=11, color='white'
             )
         )
-        users_layout.addSpacing(4)
+        users_layout.addSpacing(2)
 
 
         # ── Date row: [Start] → [Cutoff] ───────────────────────────────────────
         date_picker_row = QHBoxLayout()
-        date_picker_row.setSpacing(0)
 
         # Left stretch
         date_picker_row.addStretch()
@@ -1147,7 +1105,56 @@ class Body(QWidget):
 
         # Add Logs container to main content
         content_layout.addWidget(logs_con)
-        content_layout.addSpacing(8)
+        content_layout.addSpacing(4)
+
+        # ── App Version frame ────────────────────────────────────────────
+        version_con = QFrame()
+        version_con.setStyleSheet(STYLES["standard_container"])
+
+        version_layout = QVBoxLayout(version_con)
+        version_layout.setSpacing(2)
+        version_layout.setContentsMargins(12, 12, 12, 12)
+
+        version_layout.addWidget(
+            UIFactory.label("🌀 App Version", style_key="header_label")
+        )
+
+        version_layout.addWidget(
+            UIFactory.label(
+                f"Current version: {current_version}\n"
+                "Roll back to a previous release if the current version has issues.",
+                font_size=11, color='white'
+            )
+        )
+
+        version_layout.addSpacing(2)
+        version_items = [
+           (f"v{tag}", (tag, asset_id))
+           for tag, asset_id, _body in (releases or [])
+           if tag != current_version
+       ]
+        self.version_dropdown = UIFactory.combo_box(
+            items=version_items,
+            height=30,
+            placeholder="No previous versions available" if not version_items else "Select a version",
+        )
+        self.version_dropdown.setEnabled(bool(version_items))
+
+        version_layout.addWidget(self.version_dropdown)
+        version_layout.addSpacing(2)
+
+        self.rollback_btn = UIFactory.button(
+            "Rollback to Selected Version",
+            lambda: self._on_rollback_clicked_ui(self.version_dropdown.currentData()),
+            "settings_button",
+            height=35
+        )
+
+        self.rollback_btn.setEnabled(self.version_dropdown.count() > 0)
+        version_layout.addWidget(self.rollback_btn)
+
+        content_layout.addWidget(version_con)
+        content_layout.addSpacing(4)
 
         # ── Status ──────────────────────────────────────────────────────────
         self.app_settings_status = UIFactory.label(
@@ -1173,7 +1180,7 @@ class Body(QWidget):
         )
 
     def show_settings_status(self, code):
-        self._resize(530, self.height["settings"] + 10)
+        self._resize(530, self.height["settings"] + 20)
 
         if isinstance(code, tuple):
             code_, filename = code
@@ -1181,18 +1188,69 @@ class Body(QWidget):
             code_ = code
             filename = ""
 
-        if "success" in code or "error" in code:
+        if "success" in code_ or "error" in code_:
             self.share_logs_btn.setDisabled(False)
             self.share_logs_btn.setText("Share Logs with Support")
 
         message_template = APP_SETTINGS_STATUSES[code_]
-        self.app_settings_status.setText(message_template.format(file_name=filename or ""))
+        status = message_template.format(file_name=filename or "")
+
+        if "log" in status:
+            status = status.replace(" log/s", "")
+
+
+        self.app_settings_status.setText(status)
         
         self.app_settings_status.setStyleSheet(
                 f"color: {'#16A34A' if 'success' in code_ else '#DC2626' if 'error' in code_ else '#D3D0D0'};"
                 "font-size: 10px;"
             )
         self.app_settings_status.show()
+
+    # ===================================================================
+    # SETTINGS ACTIONS ON CLICK
+    # ===================================================================
+    def _on_add_user_clicked(self, email):
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self._emit_clicked(['add_user', email])
+
+    def _on_share_logs_clicked(self):
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self.share_logs_btn.setDisabled(True)
+        self.share_logs_btn.setText("Sharing...")
+
+        current_file = self.share_logs_current_cbox.isChecked()
+        start_date = self.start_date.date().toPyDate()
+        end_date = self.end_date.date().toPyDate()
+        self._emit_clicked(["share_logs", current_file, start_date, end_date])
+
+    def _on_excel_locker_upload_btn_click(self):
+        is_single = self.excel_locker_tabs.currentIndex() == 0
+
+        if is_single:
+            password = self.excel_locker_single_password.text().strip()
+            create_copy = self.excel_locker_single_create_copy.isChecked()
+            self._set_btn_processing(self.excel_locker_single_upload_btn, "Locking...")
+        else:
+            password = self.excel_locker_multiple_password.text().strip()
+            create_copy = self.excel_locker_multiple_create_copy.isChecked()
+            self._set_btn_processing(self.excel_locker_multiple_upload_btn, "Locking...")
+
+        self._hide_aux_buttons()
+        self._hide_statuses()
+        self.excel_locker_status.hide()
+
+        self._emit_clicked([
+            'lock_excel',
+            password,
+            is_single,
+            create_copy
+        ])
+
+    def _on_rollback_clicked_ui(self, selection):
+        self._emit_clicked(["rollback", selection])
 
     # ===================================================================
     # SCREEN 5 — TOOLBOX

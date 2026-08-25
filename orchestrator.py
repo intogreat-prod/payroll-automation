@@ -78,20 +78,24 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtWidgets import QMessageBox
 
 from orchestrators.payroll_orchestrator import PayrollOrchestrator
 from orchestrators.billing_orchestrator import BillingOrchestrator
+
 from services.config_service import ConfigService
 from services.msal_service import MSALService
 from services.sharepoint_service import SharePointService
+
 from ui.main_window import MainWindow
+from ui.styles import STYLES
 from utils.app_config_user import get
 from utils.error_handler import register_global_handler
 from utils.file_manager import FileManager
 from utils.file_utils import app_data_path
-from utils.internet import internet_available, ok
+from utils.internet import internet_available
 from utils.logger import Logger
-from utils.updater import DownloadWorker, get_current_version, get_latest_release, is_newer
+from utils.updater import DownloadWorker, get_current_version, get_latest_release, is_newer, list_releases
 
 # Suite-root flows that used to live inline here (see the docstring
 # below) — mixed onto the class at the bottom of this file.
@@ -447,6 +451,10 @@ class Orchestrator:
                     self.log.info(f"Share Logs triggered")
                     self._upload_logs(btn[1], btn[2], btn[3])
 
+                elif action == "rollback":
+                    self.log.info(f"Rollback triggered | version={btn[1]}")
+                    self._on_rollback_clicked(btn[1])
+
                 else:
                     self.log.warning(f"Unhandled list action | action={action}")
                 return
@@ -526,7 +534,6 @@ class Orchestrator:
             self.main_window.showMinimized()
 
         elif btn == "restart":
-            self._file_manager.upload_log(self.state)
             executable = Path(sys.argv[0]).resolve() if getattr(sys, "frozen", False) else Path(sys.executable)
             self.log.info(f"Orchestrator: Restart triggered - Loc:{executable}")
             subprocess.Popen([str(executable)])
@@ -681,7 +688,9 @@ class Orchestrator:
             #if self.envt == "DEV":
             #    raise EnvironmentError("DEV build reached a production user — aborting.")
 
+
             self._check_for_update()
+
         else:
             try:
                 config = json.loads(response.text)
@@ -712,6 +721,7 @@ class Orchestrator:
         """
         self.log.section("UPDATE CHECK")
         self.state["current"] = get_current_version()
+        self.state["releases"] = list_releases()
         self.log.info(f"Orchestrator: Current version {self.state['current']} — checking for updates")
 
         self._update_worker = _UpdateCheckWorker()
@@ -719,6 +729,9 @@ class Orchestrator:
         self._update_worker.start()
 
     def _on_update_checked(self, latest):
+        update_recommended = self.state["app_config"]["update"]["recommended"]
+        force_update = self.state["app_config"]["update"]["force"]
+
         if not latest:
             self.log.info("Orchestrator: Update check failed or no releases found — skipping")
             self._go_suite_home()
@@ -727,24 +740,66 @@ class Orchestrator:
         self.state["latest"], asset_id, notes = latest
 
         if not is_newer(self.state["latest"], self.state["current"]):
-            self.log.info(f"Orchestrator: Already up to date | version={self.state['current']}")
+            if self._nav_override == ["Home"]: # From Check update util
+                msg_box = QMessageBox(self.main_window)
+                msg_box.setFixedWidth(100)
+                msg_box.setWindowTitle("No New Update")
+                msg_box.setText(
+                    f"You are already running version {self.state['current']}.\n\n"
+                    f"Do you want to reinstall version {self.state['latest']}?"
+                )
+                msg_box.setStandardButtons(
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                msg_box.setStyleSheet(STYLES["message_box"])
+
+                if msg_box.exec() != QMessageBox.StandardButton.Yes:
+                    self.log.info("Orchestrator: Update/reinstall cancelled by user")
+                    return
+
+                self.log.info(
+                    f"Orchestrator: Reinstalling selected version | "
+                    f"version={self.state['latest']}"
+                )
+                self._do_update(asset_id)
+                return
+
+            self.log.info(
+                f"Orchestrator: Already up to date | version={self.state['current']}"
+            )
             self._go_suite_home()
             return
 
         self.log.info(
-            f"Orchestrator: New version available | "
-            f"{self.state['current']} → {self.state['latest']}"
+            f"Orchestrator: New version available | {self.state['current']} → {self.state['latest']}")
+
+        if force_update:
+            self.log.info(
+                "Orchestrator: Force update enabled — auto-updating the suite..."
+            )
+            self._do_update(asset_id)
+            return
+
+        if update_recommended:
+            self.log.info(
+                "Orchestrator: Update recommended — displaying update prompt"
+            )
+            self.body.show_update_prompt(
+                self.state["current"],
+                self.state["latest"],
+                notes,
+                on_confirm=lambda: self._do_update(asset_id),
+            )
+            return
+
+        self.log.info(
+            "Orchestrator: Update not recommended — skipping update prompt"
         )
-        self.body.show_update_prompt(
-            self.state["current"],
-            self.state["latest"],
-            notes,
-            on_confirm=lambda: self._do_update(asset_id),
-        )
+        self._go_suite_home()
 
     def _do_update(self, asset_id: str):
         """Downloads the installer and launches it. Closes the app after launch."""
-        self.log.info("Orchestrator: User confirmed update — downloading installer")
+        self.log.info("Orchestrator: User or auto-update confirmed  — downloading installer")
         self.body.show_update_downloading(self.state["current"], self.state["latest"])
 
         self._download_worker = DownloadWorker(asset_id, self.log, self._file_manager, self.state)
@@ -783,6 +838,41 @@ class Orchestrator:
         self.log.info("Orchestrator: Installer launch scheduled — closing app")
         self.main_window.close()
         os._exit(0)
+
+    def _on_rollback_clicked(self, selection: tuple):
+        """
+        Confirm and download a past release selected from Settings,
+        reusing the exact same download/install path as a normal update.
+        """
+
+        self.log.section("ROLLBACK")
+
+        if not selection:
+            self.body.show_settings_status("empty_selection_error")
+            return
+        else:
+            tag, asset_id = selection
+
+        self.log.info(f"Orchestrator: Rollback requested | version={tag}")
+        
+        msg_box = QMessageBox(self.main_window)
+        msg_box.setWindowTitle("Confirm Rollback")
+        msg_box.setText(f"Roll back to version {tag}? The app will restart to complete this.")
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg_box.setStyleSheet(STYLES["message_box"])
+
+        if msg_box.exec() != QMessageBox.StandardButton.Yes:
+            self.log.info("Orchestrator: Rollback cancelled by user")
+            return
+                
+        self.log.info(f"Orchestrator: Rollback confirmed — downloading v{tag}")
+        self.body.show_update_downloading(self.state["current"], tag)
+
+        self._rollback_worker = DownloadWorker(asset_id, self.log, self._file_manager, self.state)
+        self._rollback_worker.progress.connect(self._on_download_progress)
+        self._rollback_worker.finished.connect(self._on_update_done)
+        self._rollback_worker.start()
+
     # ===================================================================
     # SUITE NAVIGATION
     # ===================================================================
@@ -790,9 +880,13 @@ class Orchestrator:
     def _on_suite_app_selected(self, app: str):
         """Route from the suite root into whichever app tile was tapped."""
         if app == "app_settings":
-            users = self.state["app_config"]["users"]
             self._nav_override = ["Home", "Settings"]
-            self.body.show_settings(users)
+
+            users = self.state["app_config"]["users"]
+            current = self.state["current"]
+            releases = self.state["releases"]
+
+            self.body.show_settings(users, current_version=current, releases=releases)
             return
         elif app == "app_toolbox":
             self._nav_override = ["Home", "Toolbox"]
@@ -820,6 +914,7 @@ class Orchestrator:
             self._nav_override = ["Home", "Account"]
             self.body.show_account(self.state.get("name"), self.state.get("email"), self.state.get("user_details"))
         elif clean_util == "check_update":
+            self._nav_override = ["Home"]
             self._check_for_update()
         elif clean_util == "credits":
             self._nav_override = ["Home", "About / Credits"]

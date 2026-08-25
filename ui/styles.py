@@ -285,6 +285,44 @@ STYLES = {
       );
        }
        """,
+    "month_picker": """
+            QDialog {
+                background: #1e2433;
+                border: 1px solid #c5cee8;
+                border-radius: 12px;
+            }
+            QPushButton {
+                background: rgba(255, 255, 255, 0.08);
+                color: white;
+                border: 1px solid transparent;
+                border-radius: 8px;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background: rgba(80, 130, 180, 0.35);
+                border-color: #c5cee8;
+            }
+
+            QPushButton[selected="true"] {
+                background: rgba(40, 130, 180, 0.75);
+                border-color: #6ecef5;
+            }
+            QLineEdit {
+                border: 1px solid #c5cee8;
+                border-radius: 12px;
+                padding: 4px 8px;
+                background: rgba(255, 255, 255, 0.08);
+                color: white;
+            }
+            QLineEdit:hover {
+                border-color: qlineargradient(
+                x1:0, y1:0, x2:1, y2:1,
+                stop:0   rgba(30, 100, 45, 0.75),
+                stop:0.4 rgba(40, 130, 180, 0.75),
+                stop:1   rgba(80, 80, 120, 0.65)
+            );
+            }
+        """,
   # --- Scroll ---
   "settings_scroll": """
       QScrollBar:vertical {
@@ -331,39 +369,52 @@ STYLES = {
   """,
    # --- Calendar ---
   "calendar_dark":"""
-           QCalendarWidget {
-               border-radius: 12px;
-           }
-           QCalendarWidget QWidget {
-               background-color: #344052;
-               border-top-left-radius: 12px;
-               border-top-right-radius: 12px;
-               padding: 6px;
-           }
-           QCalendarWidget QToolButton {
-               color: #DADCE0;
-               background: #344052;
-               font-weight: bold;
-               font-size: 13px;
-           }
-           QCalendarWidget QToolButton:hover {
-               background-color: #768291;
-               border-radius: 4px;
-           }
-           QCalendarWidget QAbstractItemView {
-               padding: 0px;
-               background-color: #27364C;
-               selection-background-color: white;
-               selection-color: white;
-               border-bottom-left-radius: 12px;
-               border-bottom-right-radius: 12px;
-               border: none;
-               outline: 0px;
-           }
-           QCalendarWidget QAbstractItemView:disabled {
-               color: rgba(44, 44, 62, 0.3);
-           }
-       """,
+          QCalendarWidget {
+              border-radius: 12px;
+          }
+          QCalendarWidget QWidget {
+              background-color: rgba(35, 38, 48, 0.95);
+              border-top-left-radius: 12px;
+              border-top-right-radius: 12px;
+              padding: 6px;
+          }
+          QCalendarWidget QToolButton {
+              color: #DADCE0;
+              background: rgba(35, 38, 48, 0.95);
+              font-weight: bold;
+              font-size: 13px;
+          }
+          QCalendarWidget QToolButton:hover {
+              background-color: #768291;
+              border-radius: 8px;
+          }
+          QCalendarWidget QAbstractItemView {
+              padding: 0px;
+              background-color: rgba(20, 22, 30, 0.95);
+              color: #DADCE0;
+              selection-background-color: rgba(255, 255, 255, 0.18);
+              selection-color: white;
+              border-bottom-left-radius: 12px;
+              border-bottom-right-radius: 12px;
+              border: none;
+              outline: 0px;
+          }
+          QCalendarWidget QTableView::item:hover {
+              background-color: rgba(255, 255, 255, 0.08);
+              border-radius: 6px;
+          }
+          QCalendarWidget QHeaderView {
+              background-color: rgba(35, 38, 48, 0.95);
+          }
+          QCalendarWidget QHeaderView::section {
+              background-color: rgba(35, 38, 48, 0.95);
+              color: #DADCE0;
+              border: none;
+          }
+          QCalendarWidget QAbstractItemView:disabled {
+              color: rgba(44, 44, 62, 0.3);
+          }
+      """,
        # --- Divider ---
        "standard_divider":
            "background-color: rgba(255,255,255,0.08); max-height:1px; border:none;",
@@ -410,4 +461,85 @@ STYLES = {
            padding: 2px 12px 2px 12px;
        }
    """,
+    # --- COMOBOX---
+   "combo_box": """
+        QComboBox {
+            font-size: 12px;
+            color: rgba(220, 220, 220, 1);
+            padding: 5px 10px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+        }
+        QComboBox:hover {
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-color: qlineargradient(
+            x1:0, y1:0, x2:1, y2:1,
+            stop:0   rgba(30, 100, 45, 0.75),
+            stop:0.4 rgba(40, 130, 180, 0.75),
+            stop:1   rgba(80, 80, 120, 0.65)
+            );
+        }
+        QComboBox:disabled {
+            color: rgba(180, 180, 180, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        QComboBox::drop-down {
+            border: none;
+            width: 24px;
+        }
+        QComboBox::down-arrow {
+            image: url(:/icons/chevron_down.png);
+            width: 10px;
+            height: 10px;
+        }
+        QComboBox QAbstractItemView {
+            background-color: rgba(20, 22, 30, 0.95);
+            color: rgba(220, 220, 220, 1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            selection-background-color: rgba(255, 255, 255, 0.15);
+            selection-color: white;
+            outline: none;
+            padding: 4px;
+            border-radius: 8px;
+        }
+    """,
+
+    # --- MESSAGE BOX ---
+
+    "message_box": """
+        QMessageBox {
+            background-color: rgba(20, 22, 30, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+        }
+        QMessageBox QLabel {
+            padding: 6px 0px;
+            color: rgba(220, 220, 220, 1);
+            font-size: 13px;
+            background: transparent;
+            border: none;
+            qproperty-alignment: 'AlignCenter';
+        }
+        QMessageBox QPushButton {
+            background: rgba(255, 255, 255, 0.06);
+            color: rgba(220, 220, 220, 1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 6px 18px;
+            font-weight: bold;
+            min-width: 70px;
+        }
+        QMessageBox QPushButton:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: white;
+        }
+        QMessageBox QPushButton:pressed {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+    """,
+    
+    
 }

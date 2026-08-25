@@ -56,6 +56,7 @@ def billing_app_path() -> Path:
     return path
 
 
+
 def resource_path(relative_path: str) -> str:
     """
     Resolves an asset path that works in both dev and a PyInstaller bundle.

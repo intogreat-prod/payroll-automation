@@ -44,6 +44,37 @@ def _auth_headers() -> dict:
 def get_current_version() -> str:
     return get("VERSION", "0.0.0")
 
+def list_releases(limit: int = 15) -> list[tuple[str, str, str]]:
+   """
+   Calls the GitHub API and returns up to `limit` past releases as
+   [(version_tag, asset_id, body), ...], newest first.
+   Returns [] on any failure — never blocks the app.
+   """
+   try:
+       url = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
+       response = requests.get(
+           url, headers=_auth_headers(), params={"per_page": limit}, timeout=5
+       )
+       if response.status_code != 200:
+           return []
+       
+       releases = []
+       for data in response.json():
+           tag = data.get("tag_name", "").lstrip("v")
+           assets = data.get("assets", [])
+           asset = next(
+               (a for a in assets if a["name"].endswith("_Setup.exe")),
+               None,
+           )
+           
+           if not tag or not asset:
+               continue
+           
+           releases.append((tag, str(asset["id"]), data.get("body", "")))
+       return releases
+   
+   except Exception:
+       return []
 
 def get_latest_release() -> tuple[str, str] | None:
     """

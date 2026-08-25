@@ -1124,7 +1124,7 @@ class PayrollBody:
         self.processing_progress.setStyleSheet(STYLES["progress_bar"])
         self.processing_progress.setTextVisible(False)
         self.body._layout.addWidget(self.processing_progress)
-        self.body._main_window.start_progress()
+        self.body._main_window.start_progress_heartbeat()
 
     def update_processing_progress(self, percent: int, message: str):
         """

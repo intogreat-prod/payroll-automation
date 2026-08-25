@@ -12,6 +12,13 @@ progress reported back to the UI. Settings is still a placeholder and
 routes to BillingBody.show_coming_soon() (see
 ui/components/body_apps/billing_app.py).
 
+Attendance Summary (formerly "Attendance Adjustment", formerly a Tool)
+now lives under Features and no longer touches SharePoint or Unmand at
+all — files are validated locally, then AttendanceAdjustmentFeature.
+generate() runs the computation and writes the output .xlsx directly.
+Rates come from billing_config, AUD-PHP/Month/Year come from
+suite.state (set by the UI or defaulted to the current month).
+
 Holds a reference to the suite root (`suite`) the same way
 PayrollOrchestrator does, so it can read/write suite.state and call
 suite.body.billing.show_*().
@@ -23,12 +30,14 @@ import os
 import webbrowser
 from datetime import datetime
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QDate, QThread, pyqtSignal
 
 from features.billing.billing import BillingFeature
 from features.billing.checker import BillingCheckerFeature
+from features.billing.attendance_adjustment import AttendanceAdjustmentFeature
+
 from services.unmand_service import UnmandService
-from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES
+from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES
 from utils.internet import ok
 
 
@@ -109,6 +118,41 @@ class _BillingValidationWorker(QThread):
             self.checker.on_progress = None
 
 
+class _AttendanceAdjustmentWorker(QThread):
+    """Runs the Attendance Summary generation off the main thread."""
+    progress = pyqtSignal(int, str)            # percent, message
+    result   = pyqtSignal(list)            # percent, message
+    finished = pyqtSignal(bool, object)        # success, file_path | error_code
+
+    def __init__(self, files: dict, token: str, rates_loc: str, source: str, date: tuple, aud_php: float, log, att_adj):
+        super().__init__()
+        self.files      = files
+        self.token      = token
+        self.rates_loc  = rates_loc
+        self.source     = source
+        self.date       = date
+        self.aud_php    = aud_php
+        self.log        = log
+        self.att_adj    = att_adj
+
+    def run(self):
+        self.att_adj.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
+        self.att_adj.on_result = lambda codes: self.result.emit(
+            list(codes) if isinstance(codes, (list, tuple)) else [codes]
+        )
+        try:
+            result = self.att_adj.generate(self.files, self.token, self.rates_loc, self.source, self.date, self.aud_php)
+            if result is None:
+                self.finished.emit(False, "processing_error")
+            else:
+                self.finished.emit(True, result)
+        except Exception as e:
+            self.log.error(f"_AttendanceAdjustmentWorker: Failed — {e}", error=e)
+            self.finished.emit(False, "processing_error")
+        finally:
+            self.att_adj.on_progress = None
+
+
 class BillingOrchestrator:
 
     def __init__(self, suite):
@@ -122,6 +166,7 @@ class BillingOrchestrator:
         # -----------------------------------------------------------
         self.billing = BillingFeature(self.log, suite.main_window)
         self.checker = BillingCheckerFeature(self.log, suite.main_window)
+        self.att_adj = AttendanceAdjustmentFeature(self.log, suite.main_window)
 
         self.billing.on_result      = self._billing_files_preparation_result
         self.billing.uploaded_files = self._upload_sp_files
@@ -130,6 +175,10 @@ class BillingOrchestrator:
         self.checker.on_result      = self._checker_files_preparation_result
         self.checker.uploaded_files = self._generate_validation
         self.checker.on_progress    = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
+
+        self.att_adj.on_result      = self._att_adj_files_preparation_result
+        self.att_adj.uploaded_files = self._generate_att_adj
+        self.att_adj.on_progress    = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
 
         # -----------------------------------------------------------
         # Services — created lazily (only when first needed)
@@ -140,6 +189,7 @@ class BillingOrchestrator:
         # collected mid-run.
         self._upload_worker   = None
         self._validate_worker = None
+        self._att_adj_worker  = None
 
     # ===================================================================
     # DISPATCH — entry point called by the suite root for any click
@@ -190,6 +240,12 @@ class BillingOrchestrator:
         elif "feature" in btn:
             self._on_feature_selected(btn)
 
+        elif "_bill" in btn:
+            btn_ = btn.removesuffix("_bill")
+            url = self.suite.state["billing_config"]["settings"][btn_]
+            self.log.info(f"Opening File | url={url}")
+            webbrowser.open(url)
+
         elif btn == "send_unmand":
             self.log.info("Send to Unmand triggered")
             self._start_unmand()
@@ -205,22 +261,27 @@ class BillingOrchestrator:
                 os.startfile(billing_output_file)
 
         elif btn == "checker_upload":
-            billing_cfg = self.suite.state.get("billing_config") or {}
-            cc_names    = billing_cfg.get("expected_contact_center")
-            additional_column_map    = billing_cfg.get("additional_column_map")
+            checker_cfg = self.suite.state["billing_config"]["automation"].get("checker") or {}
+            cc_names    = checker_cfg.get("expected_contact_center")
+            additional_column_map    = checker_cfg.get("additional_column_map")
             self.log.info("Billing checker upload triggered")
             self.suite.body.billing.show_processing_progress("Opening local folder...", "checker")
             self.checker.prepare_checker_files(cc_names, additional_column_map)
+
+        elif btn == "attendance_summary_generate":
+            self.log.info("Attendance Summary generation triggered")
+            self._on_att_adj_upload_clicked()
+
+        elif btn == "open_att_adj_output":
+            att_adj_output_file = self.suite.state.get("att_adj_output_file")
+            self.log.info(f"Opening Attendance Summary output | path={att_adj_output_file}")
+            if att_adj_output_file:
+                os.startfile(att_adj_output_file)
 
         elif btn == "open_checker_output":
             variance_file = self.suite.state["billing_variance_file"]
             self.log.info(f"Opening billing checker output | path={variance_file}")
             os.startfile(variance_file)
-
-        elif btn in ["client_billing_info", "discounts"]:
-            url = self.suite.state["billing_config"][btn]
-            self.log.info(f"Opening Payroll Headers | url={url}")
-            webbrowser.open(url)
 
         else:
             self.log.warning(f"Unhandled action | action={btn}")
@@ -259,8 +320,9 @@ class BillingOrchestrator:
         """
         Navigate to the selected feature screen.
 
-        Check Variance is real; Automation/Settings land on the shared
-        "coming soon" placeholder until they're scaffolded out.
+        Check Variance and Attendance Summary are real; Automation/
+        Settings land on the shared "coming soon" placeholder until
+        they're scaffolded out.
         """
         self.log.event("Feature selected", feature=feature)
         self.suite.state["feature"] = feature
@@ -273,10 +335,14 @@ class BillingOrchestrator:
             self.suite.body.billing.show_checker_feature()
 
         elif feature == "billing_feature":
-            billing_cfg    = self.suite.state.get("billing_config") or {}
-            required_files = billing_cfg.get("required_files", [])
+            automation_cfg    = self.suite.state["billing_config"]["automation"].get("unmand") or {}
+            required_files = automation_cfg.get("required_files", [])
             self.log.info(f"Billing Automation Selected | required_files={len(required_files)}")
             self.suite.body.billing.show_billing_feature(required_files)
+
+        elif feature == "attendance_summary_feature":
+            self.log.info("Attendance Summary Selected")
+            self.suite.body.billing.show_attendance_summary_feature()
 
         else:
             title = self._COMING_SOON_TITLES.get(feature, "This feature")
@@ -284,11 +350,14 @@ class BillingOrchestrator:
 
     def _on_tool_selected(self, tool: str):
         """Navigate to the selected tool screen — placeholder for now."""
-        self.log.event("Tool selected", tool=tool)
-        self.suite.state["feature"] = tool
+        clean_tool = tool.replace("_tool", "")
+        self.log.event("Tool selected", tool=clean_tool)
+        self.suite.state["tool"] = clean_tool
 
-        title = self._COMING_SOON_TITLES.get(tool, "This tool")
-        self.suite.body.billing.show_coming_soon(title)
+        if "attendance_adjustment" == clean_tool:
+            files = self.suite.state["billing_config"]["tools"]["att_adj"]["files"]
+            self.suite.body.billing.show_attendance_adjustment_tool(files)
+
 
     # ===================================================================
     # BILLING AUTOMATION MAIN FLOW
@@ -307,14 +376,13 @@ class BillingOrchestrator:
         self.log.section("BILLING UPLOAD")
         self.log.info("Billing upload initiated")
 
-        state       = self.suite.state
-        billing_cfg = state.get("billing_config") or {}
-        required_files = billing_cfg.get("required_files", [])
+        automation_cfg    = self.suite.state["billing_config"]["automation"].get("unmand") or {}
+        required_files = automation_cfg.get("required_files", [])
 
-        state["billing_run_id"] = self.suite.inputs["id"] or datetime.now().strftime("%Y%m%d_%H%M%S")
+        automation_cfg["billing_run_id"] = datetime.now().strftime("%B %Y")
 
         self.suite.body.billing.show_processing_progress("Opening local folder...", "billing")
-        self.billing.prepare_billing_files(required_files, billing_cfg)
+        self.billing.prepare_billing_files(required_files, automation_cfg)
 
     def _billing_files_preparation_result(self, codes: list):
         """Handle result codes emitted by BillingFeature."""
@@ -340,8 +408,8 @@ class BillingOrchestrator:
         self.log.section("BILLING SHAREPOINT UPLOAD")
 
         state       = self.suite.state
-        billing_cfg = state.get("billing_config") or {}
-        folder      = self.suite._env_url(billing_cfg.get("folder", "")) 
+        billing_cfg = state["billing_config"]["automation"].get("unmand") or {}
+        folder      = self.suite._env_url(billing_cfg.get("folder", ""))
         base_url    = f"{self.suite._sp_base_url}root:/{folder}"
 
         self.log.info(f"Uploading {len(files)} file(s) to SharePoint | folder={folder}")
@@ -350,7 +418,7 @@ class BillingOrchestrator:
             files      = files,
             sharepoint = self.suite._sharepoint,
             base_url   = base_url,
-            run_id     = state.get("billing_run_id", ""),
+            run_id     = billing_cfg.get("billing_run_id", ""),
             log        = self.log,
         )
         self._upload_worker.progress.connect(
@@ -423,6 +491,98 @@ class BillingOrchestrator:
         self.suite.body.billing.show_billing_status([status])
 
     # ===================================================================
+    # ATTENDANCE SUMMARY MAIN FLOW
+    # Local generation only — no SharePoint upload, no Unmand hand-off.
+    # Rates/AUD-PHP/Month/Year are read from config + suite.state at
+    # generation time and passed into AttendanceAdjustmentFeature.
+    # generate() as arguments.
+    # ===================================================================
+
+    def _on_att_adj_upload_clicked(self):
+        """Entry point for the Attendance Summary file-selection flow."""
+        self.log.section("ATTENDANCE SUMMARY FILE SELECTION")
+        self.log.info("Attendance Summary file selection initiated")
+
+        billing_cfg = self.suite.state["billing_config"]
+        att_adj_cfg =  billing_cfg["tools"]["att_adj"]
+        id_names_cfg = billing_cfg.get("expected_id_names", {})
+        req_files_cfg = att_adj_cfg.get("attendance_summary_files", [])
+
+        self.exchange_rate = self.suite.body.billing.exchange_rate_input.text()
+
+        self.suite.body.billing.show_processing_progress("Opening local folder...", "att_adj")
+        self.att_adj.prepare_attendance_adjustment_files(id_names_cfg, req_files_cfg, self.exchange_rate)
+
+    def _att_adj_files_preparation_result(self, codes: list):
+        """Handle result codes emitted by AttendanceAdjustmentFeature."""
+        self.log.section("ATTENDANCE SUMMARY VALIDATION RESULT")
+        self.log.info(f"Attendance Summary file preparation complete | code_count={len(codes)}")
+
+        for code in codes:
+            file_name, status_code = parse_status_code(code)
+            message_template       = ATT_ADJ_STATUSES.get(status_code, status_code)
+            message                = message_template.format(file_name=file_name or "")
+            is_error               = "error" in status_code
+
+            self.log.result(
+                step=f"Attendance Summary file validation — {file_name or status_code}",
+                success=not is_error,
+                detail=message,
+            )
+
+        self.suite.body.billing.show_attendance_adjustment_status(codes)
+
+    def _generate_att_adj(self, files: dict):
+        """
+        Kick off local Attendance Summary generation once files are
+        validated. Rates come from config; AUD-PHP and Month/Year come
+        from whatever the user set on the Attendance Summary screen
+        (falls back to config/current month if unset).
+        """
+        self.log.section("ATTENDANCE SUMMARY GENERATION")
+
+        date = self.suite.body.billing.attendance_month.date()
+
+        att_adj_cfg = self.suite.state["billing_config"]["tools"].get("att_adj", {})
+        rates_loc  = att_adj_cfg.get("rates_loc", "")
+        source  = att_adj_cfg.get("source", "")
+        gst_loc  = att_adj_cfg.get("gst_loc", "")
+
+        #self.att_adj.generate(
+        #    files, 
+        #    self.suite.state["token"],
+        #    rates_loc,
+        #    source,
+        #    (date.year(), date.month(), date.day()),
+        #    float(self.exchange_rate)
+        #    )
+
+        self._att_adj_worker = _AttendanceAdjustmentWorker(
+            files       = files,
+            token       = self.suite.state["token"],
+            rates_loc   = rates_loc,
+            source      = source, # Sprout or Darwin
+            date        = (date.year(), date.month(), date.day()),
+            aud_php     = float(self.exchange_rate),
+            log         = self.log,
+            att_adj     = self.att_adj,
+        )
+        self._att_adj_worker.progress.connect(self._on_processing_progress)
+        self._att_adj_worker.result.connect(self._att_adj_files_preparation_result)
+        self._att_adj_worker.finished.connect(self._on_att_adj_generated)
+        self._att_adj_worker.start()
+
+    def _on_att_adj_generated(self, success: bool, result):
+        state = self.suite.state
+        if success:
+            state["att_adj_output_file"] = str(result)
+            self.log.info(f"Attendance Summary written | path={result}")
+            self.suite.body.billing.show_attendance_adjustment_status(["generated_success"])
+        else:
+            self.log.warning(f"Attendance Summary generation failed | code={result}")
+            self.suite.body.billing.show_attendance_adjustment_status([result])
+
+    # ===================================================================
     # CHECKER MAIN FLOW
     # ===================================================================
 
@@ -454,8 +614,6 @@ class BillingOrchestrator:
         var_tolerance = billing_cfg.get("var_tolerance", 0)
 
         self.suite.body.billing.show_processing_progress("Running checker validation…", "checker")
-
-        #self.checker.generate(files)
 
         self._validate_worker = _BillingValidationWorker(
             files         = files,
@@ -491,4 +649,3 @@ class BillingOrchestrator:
 
     def _on_processing_progress(self, percent: int, message: str):
         self.suite.body.billing.update_processing_progress(percent, message)
-

@@ -69,15 +69,12 @@ class LoginForm(QWidget):
             f"&body={quote(body)}"
         )
 
-        self._request_access = UIFactory.label(
-            f'<style>'
-            f'a {{ color:#6AAFA7; text-decoration:underline; }}'
-            f'a:hover {{ color:#8AC8C0; }}'
-            f'</style>'
-            f'<a href="{mailto}">No access yet? Request access</a>',
-            align="center",
-            link=True,
-            richtext=True
+        self._request_access = UIFactory.link_label(
+            "No access yet? Request access.",
+            mailto,
+            color="#6AAFA7",
+            hover_color="white",
+            align="center"
         )
 
         # --- Error labels (hidden until needed) ---

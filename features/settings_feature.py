@@ -49,17 +49,17 @@ def _add_user(self, email: str):
 
     if not email:
         self.log.warning("Add user — email field is empty")
-        self.body.show_settings_add_user_status("empty_error")
+        self.body.show_settings_status("empty_error")
         return
 
     if allowed_domain not in email:
         self.log.warning(f"Add user — invalid domain | email={email}")
-        self.body.show_settings_add_user_status("error_email")
+        self.body.show_settings_status("error_email")
         return
 
     if email in state["users"]:
         self.log.warning(f"Add user — duplicate | email={email}")
-        self.body.show_settings_add_user_status("duplicate_user")
+        self.body.show_settings_status("duplicate_user")
         return
 
     # ── Power Automate — add to Teams group ──────────────────────
@@ -75,7 +75,7 @@ def _add_user(self, email: str):
 
     if not ok(pa_response):
         self.log.warning(f"Power Automate flow failed | HTTP={pa_response.status_code}")
-        self.body.show_settings_add_user_status("add_user_error")
+        self.body.show_settings_status("add_user_error")
         return
 
     self.log.info("Power Automate add-user flow accepted")
@@ -90,7 +90,7 @@ def _add_user(self, email: str):
         # NOTE: previously logged pa_response.status_code here by mistake —
         # this is the config-update call failing, not the Power Automate one.
         self.log.warning(f"Config update failed | HTTP={config_response.status_code}")
-        self.body.show_settings_add_user_status("add_user_error")
+        self.body.show_settings_status("add_user_error")
         return
 
     # ── Graph API — send welcome email ────────────────────────────
@@ -118,15 +118,15 @@ def _add_user(self, email: str):
 
     if not ok(email_response):
         self.log.warning(f"Welcome email failed | HTTP={email_response.status_code}")
-        self.body.show_settings_add_user_status("add_user_email_error")
+        self.body.show_settings_status("add_user_email_error")
         return
 
     self.log.info(f"User added successfully | email={email}")
-    self.body.show_settings_add_user_status("add_user_success")
+    self.body.show_settings_status("add_user_success")
     self.reload_config_silent(
         on_done=lambda: (
             self.body.show_settings(self.state["app_config"]["users"]),
-            self.body.show_settings_add_user_status("add_user_success"),
+            self.body.show_settings_status("add_user_success"),
         )
     )
 

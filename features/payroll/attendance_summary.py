@@ -751,9 +751,11 @@ class AttendanceSummaryTool:
         float  Floored minutes, or 0.00 when the override applies.
         """
         raw = row.get("Late By", "")
-        total_seconds = self._hhmmss_to_total_seconds(raw)
+        raw1 = row.get("Total Work Duration")
+        late_by = self._hhmmss_to_total_seconds(raw)
+        work_duration = self._hhmmss_to_total_seconds(raw1)
 
-        if total_seconds is None:
+        if late_by is None:
             return 0.00, ""
 
         policy = str(row.get("Policy", "")).strip()
@@ -786,13 +788,13 @@ class AttendanceSummaryTool:
             # If shift not recognised or comparison fails, fall through
 
         # Order matters — check the stricter threshold first
-        if total_seconds >= 4 * 3600:
+        if late_by >= (5 * 3600) and work_duration < (4 * 3600):
             return 0.00, "Unpaid Leave"
 
-        if total_seconds >= 2 * 3600:
+        if late_by >= (2 * 3600) + 60:
             return 0.00, "Present,Half Day Unpaid Leave"
 
-        return self._seconds_to_floored_minutes(total_seconds), ""
+        return self._seconds_to_floored_minutes(late_by), ""
 
     def _compute_early_clockout(self, row: pd.Series) -> tuple[float, str]:
         """
@@ -800,8 +802,8 @@ class AttendanceSummaryTool:
 
         Rules
         -----
-        • >= 4 hr (14 400 s) → 0.00, status = "Unpaid Leave"
-        • >= 2 hr  (7 200 s) → 0.00, status = "Present, Half Day Unpaid Leave"
+        • >= 5 hr (14 400 s) → 0.00, status = "Unpaid Leave"
+        • >= 2 hr 1 min  (7 200 s) → 0.00, status = "Present, Half Day Unpaid Leave"
         • < 2 hr             → floored minutes, status = "" (unchanged)
 
         Returns
@@ -809,19 +811,23 @@ class AttendanceSummaryTool:
         tuple[float, str]   (early_clock_out_unmand, status_unmand)
         """
         raw = row.get("Early Clock Out By", "")
-        total_seconds = self._hhmmss_to_total_seconds(raw)
+        raw1 = row.get("Total Work Duration")
 
-        if total_seconds is None:
+        early_clock_out = self._hhmmss_to_total_seconds(raw)
+        work_duration = self._hhmmss_to_total_seconds(raw1)
+
+
+        if early_clock_out is None:
             return 0.00, ""
 
         # Order matters — check the stricter threshold first
-        if total_seconds >= 4 * 3600:
+        if early_clock_out >= 5 * 3600 and work_duration < (4 * 3600):
             return 0.00, "Unpaid Leave"
 
-        if total_seconds >= 2 * 3600:
+        if early_clock_out >= (2 * 3600) + 60:
             return 0.00, "Present,Half Day Unpaid Leave"
 
-        return self._seconds_to_floored_minutes(total_seconds), ""
+        return self._seconds_to_floored_minutes(early_clock_out), ""
 
     def _compute_unmand_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
