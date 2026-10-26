@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QDate
 
 from ui.styles import STYLES
-from ui.statuses import BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES, parse_status_code
+from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES, INSIGHTFUL_STATUSES
 from ui.ui_factory import UIFactory
 
 
@@ -42,6 +42,7 @@ class BillingBody:
             "billing_input": 950,
             "billing_output": 850,
             "att_adj": 770,
+            "insightful": 770,
             "checker": 770,
             "settings": 550,
         }
@@ -134,7 +135,7 @@ class BillingBody:
         so this is effectively a placeholder with just Back.
         """
         self.body._clear()
-        self.body._resize(350, 400)
+        self.body._resize(350, 440)
 
         tools_layout = QVBoxLayout()
         tools_layout.setSpacing(4)
@@ -145,6 +146,7 @@ class BillingBody:
         col, layout = UIFactory.button_column(
             [
                 ("Attendance Adjustment", lambda: self.body._emit_clicked("attendance_adjustment_tool"), "payroll_button"),
+                ("Insightful", lambda: self.body._emit_clicked("insightful_tool"), "payroll_button"),
                 ("◀ Back",       lambda: self.body._emit_clicked("back"),  "payroll_button"),
             ],
             spacing=12,
@@ -424,8 +426,8 @@ class BillingBody:
         ))
         output_layout.addStretch()
 
-        self.billing_tabs.addTab(input_tab, "Input")
-        self.billing_tabs.addTab(output_tab, "Output")
+        self.billing_tabs.addTab(input_tab, "Unmand Masterfile Creation")
+        self.billing_tabs.addTab(output_tab, "Support File Creation")
 
         self.billing_tabs.currentChanged.connect(
             lambda _: self._on_billing_tabs_changed(self.billing_required_files_len)
@@ -715,7 +717,7 @@ class BillingBody:
     # ===================================================================
     def show_attendance_adjustment_tool(self, required_files):
         self.body._clear()
-        self._horizontal_automation_menu()
+        self._horizontal_menu_tools()
 
         self.att_file_count = len(required_files)
 
@@ -807,7 +809,7 @@ class BillingBody:
         )
         
         rates_btn = UIFactory.button("Payroll Headers and Rates",
-                                     lambda: self._on_att_adj_generate_btn_click(),
+                                     lambda: self.body._emit_clicked("payroll_headers"),
                                      style_key="payroll_button")
         
         rates_con.addWidget(rates_label)
@@ -869,12 +871,12 @@ class BillingBody:
         content_layout.addStretch()
 
         # ── Action buttons ─────────────────────────────────────────────────
-        self.att_adj_generate_btn = UIFactory.button(
+        self.att_adj_upload_btn = UIFactory.button(
             "Upload",
-            lambda: self._on_att_adj_generate_btn_click(),
+            lambda: self._on_att_adj_upload_btn_click(),
             "payroll_button"
         )
-        content_layout.addWidget(self.att_adj_generate_btn)
+        content_layout.addWidget(self.att_adj_upload_btn)
 
         open_output_btn = UIFactory.button(
             "Open Output",
@@ -894,12 +896,12 @@ class BillingBody:
 
         self.body._layout.addWidget(content)
 
-    def _on_att_adj_generate_btn_click(self):
-        """Handle Generate button click: switch to processing state, then emit."""
-        self.body._set_btn_processing(self.att_adj_generate_btn, "Processing...")
+    def _on_att_adj_upload_btn_click(self):
+        """Handle Upload button click: switch to processing state, then emit."""
+        self.body._set_btn_processing(self.att_adj_upload_btn, "Processing...")
         self.body._hide_aux_buttons()
         self.body._hide_statuses()
-        self.body._emit_clicked("attendance_summary_generate")
+        self.body._emit_clicked("attendance_summary_upload")
 
     def show_attendance_adjustment_status(self, codes):
         """
@@ -942,7 +944,191 @@ class BillingBody:
         self.body._resize(530, self.height['att_adj'] + (self.att_file_count * 10) + (result_count * 10))
 
         if status_code != "file_success":
-            self.body._set_btn_default(self.att_adj_generate_btn)
+            self.body._set_btn_default(self.att_adj_upload_btn)
+
+    # ===================================================================
+    # SCREEN 14 — INSIGHTFUL TOOL
+    # ===================================================================
+    def show_insightful_tool(self, required_files):
+        self.body._clear()
+        self._horizontal_menu_tools()
+
+        required_files_count = len(required_files)
+
+        self.body._layout.setContentsMargins(10, 10, 10, 10)
+        self.body._resize(530, self.height['insightful'] + (required_files_count * 10))
+
+        content = QFrame()
+        content.setObjectName("featureContent")
+        content.setStyleSheet(STYLES["feature_content"])
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+
+        content_layout.addWidget(UIFactory.label("Insightful", color='white', font_weight="bold", font_size=17))
+        content_layout.addWidget(
+            UIFactory.label(
+                "Creates Insightful report for the billing automation and update the\n running Insightful tracker. \n",
+                font_size=11, color='white'
+            )
+        )
+        content_layout.addSpacing(2)
+
+       # ── Insightful Tracker ─────────────────────────────────────
+        insightful_con = QFrame()
+        insightful_con.setStyleSheet(STYLES["standard_container"])
+
+        insightful_layout = QVBoxLayout(insightful_con)
+        insightful_layout.setContentsMargins(12, 12, 12, 12)
+        insightful_layout.setSpacing(6)
+
+        insightful_title = UIFactory.label(
+            "Insightful Tracker",
+            color="white",
+            font_weight="bold",
+            font_size=15
+        )
+        insightful_layout.addWidget(insightful_title)
+
+        insightful_desc = UIFactory.label(
+            "A continuously maintained file that tracks Insightful user access, \n"
+            "based on the monthly file provided by IT.",
+            color="white",
+            font_size=11,
+            padding_bottom=6,
+        )
+        insightful_layout.addWidget(insightful_desc)
+
+        insightful_btn = UIFactory.button(
+            "Insightful",
+            lambda: self.body._emit_clicked("insightful_tracker"),
+            style_key="payroll_button"
+        )
+        insightful_layout.addWidget(insightful_btn)
+
+        content_layout.addWidget(insightful_con)
+        content_layout.addSpacing(6)
+
+        # ── Required ───────────────────────────────────────────────────────
+        required_con = QFrame()
+        required_con.setStyleSheet(STYLES["standard_container"])
+
+        required_layout = QVBoxLayout(required_con)
+        required_layout.setContentsMargins(12, 12, 12, 12)
+        required_layout.setSpacing(3)
+
+        required_layout.addWidget(UIFactory.label("🗂️ Required Files", style_key="header_label"))
+
+        required_layout.addWidget(UIFactory.label(
+                "Upload the required Excel files below to consolidate payroll registers.",
+                style_key="standard",
+                word_wrap=True
+            ))
+
+        columns = QHBoxLayout()
+        columns.setSpacing(24)
+
+        files_layout = QVBoxLayout()
+        files_layout.setSpacing(1)
+        for t in required_files:
+            files_layout.addWidget(UIFactory.label(f"• {t}", font_size=11, color="rgba(200, 200, 200, 1)"))
+
+        notes_layout = QVBoxLayout()
+        notes_layout.setSpacing(4)
+        notes_layout.addWidget(UIFactory.label(
+            "Note:\n"
+            "• Headers in Row 1; single sheet.\n"
+            "• File type must be .xlsx\n"
+            "• Sensitivity should be set to Public\n"
+            "• The file should not be password-protected.\n"
+            "• If required, use INTOGREAT[YYYY].\n",
+            style_key="standard_red",
+            word_wrap=True,
+            align="left"
+        ))
+
+        columns.addLayout(files_layout, 30)
+        columns.addLayout(notes_layout, 70)
+        required_layout.addLayout(columns)
+
+        content_layout.addWidget(required_con)
+        content_layout.addStretch()
+
+        # ── Action buttons ─────────────────────────────────────────────────
+        self.insightful_upload_btn = UIFactory.button(
+            "Upload",
+            lambda: self._on_insightful_upload_btn_click(),
+            "payroll_button"
+        )
+        content_layout.addWidget(self.insightful_upload_btn)
+
+        open_output_btn = UIFactory.button(
+            "Open Output",
+            lambda: self.body._emit_clicked("open_insightful_output"),
+            "payroll_button"
+        )
+        content_layout.addWidget(open_output_btn)
+
+        self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
+                                    visible_on=["generated_success"])
+
+        # Status labels
+        for key, status in INSIGHTFUL_STATUSES.items():
+            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
+            lbl.hide()
+            content_layout.addWidget(lbl)
+
+        self.body._layout.addWidget(content)
+
+    def _on_insightful_upload_btn_click(self):
+        """Handle Upload button click: switch to processing state, then emit."""
+        self.body._set_btn_processing(self.insightful_upload_btn, "Processing...")
+        self.body._hide_aux_buttons()
+        self.body._hide_statuses()
+        self.body._emit_clicked("insightful_upload")
+
+    def show_insightful_status(self, codes):
+        """
+        Render status labels for the Insightful screen and
+        reveal aux buttons. Mirrors show_billing_status() — this flow
+        has a single terminal state ("generated_success") once local
+        generation finishes.
+        """
+        # Remove the shared processing progress widgets if they exist
+        self.body._main_window.stop_progress_heartbeat()
+        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                self.body._layout.removeWidget(widget)
+                widget.deleteLater()
+                setattr(self, attr, None)
+
+        self.body._hide_statuses()
+        result_count = 0
+        status_code  = ""
+
+        for code in codes:
+            file_name, status_code = parse_status_code(code)
+            message_template = INSIGHTFUL_STATUSES.get(status_code, status_code)
+            message = message_template.format(file_name=file_name or "")
+            result_count += 1
+
+            stat = UIFactory.label(
+                message,
+                color="red" if "error" in status_code else "green",
+                align="center",
+                selectable=True
+            )
+            self.body.statuses["billing"][code] = stat
+            stat.show()
+            self.body._layout.addWidget(stat)
+
+            self.body._show_aux_buttons_for("billing", status_code)
+
+        self.body._resize(530, self.height['insightful'] + (self.att_file_count * 10) + (result_count * 10))
+
+        if status_code != "file_success":
+            self.body._set_btn_default(self.insightful_upload_btn)
 
     # ===================================================================
     # PROCESSING PROGRESS BAR (Checker)

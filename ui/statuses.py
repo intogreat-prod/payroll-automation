@@ -25,6 +25,8 @@ SETTINGS_STATUSES — codes emitted by the Settings (users + deminimis) flow
 EXCEL_LOCKER_STATUSES — codes emitted by the Toolbox Excel Locker flow
 DBX_TO_SPROUT_STATUSES — codes emitted by the DarwinBox to Sprout conversion flow
 ATTENDANCE_SUMMARY — codes emitted by the Attendance Summary flow
+ATT_ADJ_STATUSES  — codes emitted by the Billing Attendance Adjustment flow
+INSIGHTFUL_STATUSES — codes emitted by the Billing Insightful tracker flow
 """
 
 
@@ -145,8 +147,8 @@ CHECKER_STATUSES = {
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",
     "missing_total_error":    "{file_name} — Missing Total row in "
                               "the Employee ID column.",
-    "sensitivity_error":      "File sensitivity or password protection "
-                              "issue detected in {file_name}.",
+    "sensitivity_error":      "File sensitivity or password protection issue detected in {file_name}. If the issue\n"
+                              "persists, please create a new file with the same content and try again.",
 
     # ── Configuration / reference file errors ────────────────────────
     "premium_download_error": "Payroll Headers and Premium.xlsx download error. "
@@ -213,8 +215,8 @@ BILLING_CHECKER_STATUSES = {
 
     # ── Structural errors ─────────────────────────────────────────────
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",
-    "sensitivity_error":      "File sensitivity or password protection "
-                              "issue detected in {file_name}.",
+    "sensitivity_error":      "File sensitivity or password protection issue detected in {file_name}. If the issue\n"
+                              "persists, please create a new file with the same content and try again.",
 
     # ── Processing errors ─────────────────────────────────────────────
     "processing_error":       "The checker encountered an error. "
@@ -316,8 +318,8 @@ DBX_TO_SPROUT_STATUSES = {
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",
     "missing_total_error":    "{file_name} — Missing Total row in "
                               "the Employee ID column.",
-    "sensitivity_error":      "File sensitivity or password protection "
-                              "issue detected in {file_name}.",
+    "sensitivity_error":      "File sensitivity or password protection issue detected in {file_name}. If the issue\n"
+                              "persists, please create a new file with the same content and try again.",
 
     # ── Configuration / reference file errors ────────────────────────
     "premium_download_error": "Payroll Headers and Premium.xlsx download error. "
@@ -350,17 +352,17 @@ ATTENDANCE_SUMMARY = {
     # ── Structural errors ─────────────────────────────────────────────
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",
     "missing_columns_error":  "Missing {file_name} column.",
-    "sensitivity_error":      "File sensitivity or password protection "
-                              "issue detected in {file_name}.",
+    "sensitivity_error":      "File sensitivity or password protection issue detected in {file_name}. If the issue\n"
+                              "persists, please create a new file with the same content and try again.",
 
     # ── Processing Error ────────────────────────
     "processing_error": "The tool ecountered an error. Please contact support.",
 }
 
 # ---------------------------------------------------------------------------
-# DARWINBOX TO SPROUT STATUSES
-# Emitted by: features/dbx_sprout.py [DarwinToSproutTool], 
-#             orchestrator._generate_conversion
+# ATTENDANCE ADJUSTMENT STATUSES
+# Emitted by: features/billing/attendance_adjustment.py [AttendanceAdjustmentTool],
+#             orchestrator._generate_att_adj
 # ---------------------------------------------------------------------------
 
 ATT_ADJ_STATUSES = {
@@ -371,25 +373,76 @@ ATT_ADJ_STATUSES = {
 
     # ── File count / identity errors ──────────────────────────────────
     "no_file_error":          "No file selected — aborting upload.",
-    "file_exceed_error":      "Number of file exceeds the expected limit "
-                              "of 3. Please verify your upload.",
+    "file_count_error":      "Number file error. Expected count is "
+                              "3. Please verify your upload.",
 
     # ── Structural errors ─────────────────────────────────────────────
     "missing_header_error":   "{file_name} — Missing Row 1 Header.",
     "missing_total_error":    "{file_name} — Missing Total row in "
                               "the Employee ID column.",
-    "sensitivity_error":      "File sensitivity or password protection "
-                              "issue detected in {file_name}.",
+    "sensitivity_error":      "File sensitivity or password protection issue detected in {file_name}. If the issue\n"
+                              "persists, please create a new file with the same content and try again.",
+
     "not_found_error":        "{file_name} — file not found in the upload.",
     "emp_id_not_found_error": "Employee ID(s) not found in Employee List: {file_name}",
     "currency_format_error":  "Exchange rate has an invalid format.",
     "empty_currency_error":   "Exchange rate is missing.",
+    "new_headers_error":      "Please add them to the Payroll Headers. New headers: {file_name}",
+    "processing_error":        "An unknown error occured. Please contact Automation Team",
 
     # ── SharePoint / Unmand errors ──────────────────────────────────────
     "headers_sensitivity_error":    "Please check the sensivity of the Payroll Premium Headers.xlsx Source: {file_name} ",
-    "premium_download_error":       "Payroll Premium Headers.xlsx cannot be downloaed. Please Contact the Automation Team.",
-    "upload_sp_error":              "Error uploading files to SharePoint. "
-                                    "Please contact the Automation Team.",
-    "unmand_init_error":            "Failed to start Unmand. "
-                                    "Please contact the Automation Team.",
+    "premium_download_error":       "Payroll Premium Headers.xlsx (Payroll Headers and Rates) cannot be downloaded. \n"
+                                    "Please Contact the Automation Team.",
+    "premium_header_error":         "Header [Payroll Headers and Rates] in Row 13 cannot be find in\n"
+                                    "Payroll Premium Headers.xlsx (Payroll Headers and Rates)",
+
+}
+
+# ---------------------------------------------------------------------------
+# INSIGHTFUL STATUSES
+# Emitted by: features/billing/insightful.py [InsightfulTool],
+#             orchestrator._generate_insightful
+# ---------------------------------------------------------------------------
+
+INSIGHTFUL_STATUSES = {
+
+    # ── Success ───────────────────────────────────────────────────────
+    "file_success":           "File added successfully.",
+    "generated_success":      "Insightful tracker updated and generated successfully.",
+
+    # ── New user found — tracker updated, run stopped for review ──────
+    "new_user_found":         "New user(s) found and added to the tracker: {file_name}.\n"
+                              "Please complete their details — especially the Employee ID — "
+                              "before continuing.",
+    "new_user_error":         "An error occurred while checking the tracker for new users. "
+                              "Please contact the Automation Team.",
+
+    # ── File count / identity errors ──────────────────────────────────
+    "no_file_error":          "No file selected — aborting upload.",
+    "file_count_error":      "Number file error. Expected count is "
+                              "2. Please verify your upload.",
+
+    # ── Structural errors ─────────────────────────────────────────────
+    "missing_header_error":   "{file_name} — Missing Row 1 Header.",
+    "sensitivity_error":      "File sensitivity or password protection issue detected in {file_name}. If the issue\n"
+                              "persists, please create a new file with the same content and try again.",
+    "not_found_error":        "{file_name} — file not found in the upload.",
+    "emp_id_not_found_error": "Employee ID(s) not found in Employee List: {file_name}",
+
+    "processing_error":        "An unknown error occured. Please contact Automation Team",
+
+
+    # ── SharePoint / Unmand errors ──────────────────────────────────────
+    "premium_download_error":       "Insightful.xlsx (Tracker) cannot be downloaded. \n"
+                                    "Please Contact the Automation Team.",
+    "tracker_upload_error":         "The updated Insightful tracker could not be uploaded back "
+                                    "to SharePoint. Please Contact the Automation Team.",
+    "tracker_locked_error":         "The Insightful tracker is currently locked (open in Excel or a "
+                                   "co-authoring session elsewhere). Please close it on SharePoint "
+                                   "and try again.",
+   "tracker_client_error":         "The Insightful tracker request was rejected by SharePoint "
+                                   "(HTTP {file_name}). Please contact the Automation Team.",
+    "tracker_incomplete_error":     "The following tracker column(s) have blank value(s) that must "
+                                   "be completed before the output can be generated: {file_name}.",
 }

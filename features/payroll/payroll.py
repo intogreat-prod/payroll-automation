@@ -274,10 +274,8 @@ class PayrollFeature:
         """
         self.log.info(f"PayrollFeature: Reading {len(file_paths)} file(s)")
         dataframes = {}
-        year       = datetime.now().year
-        progress = 10
-        increment = progress / len(file_paths)
-
+        year       = da
+        
         for file_path in file_paths:
             # Use pathlib for OS-safe name extraction (fixes the "/" split bug)
             filename = Path(file_path).name

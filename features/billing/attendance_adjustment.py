@@ -4,15 +4,11 @@ attendance_adjustment.py
 AttendanceAdjustmentFeature — file collection and validation for the
 Billing "Attendance Adjustment" tool.
 
-Mirrors features/payroll/payroll.py (PayrollFeature) structurally — same
-file-picker -> read/decrypt -> validate -> upload hand-off pipeline —
-adapted for this tool:
-
     - Exactly 3 FIXED files are required (not config-driven, per the
       list shown on the tool's screen):
           "Employee List"
-          "Payroll Register 1st Half"
-          "Payroll Register 2nd Half"
+          "Payroll Register 15"
+          "Payroll Register 28/29/30/31"
 
     - Pre-checks come straight from the Notes panel on that screen
       (ui/components/body_apps/billing_app.py -> show_attendance_adjustment_tool):
@@ -79,77 +75,7 @@ _DEFAULT_ID_NAMES = ["Employee ID", "EmployeeID", "Emp ID", "Emp. ID", "ID"]
 # Password format used for encrypted files (same convention as Payroll/Billing)
 _PASSWORD_PREFIX = get("PASSWORD_PREFIX", "")
 
-RATES = {
-  "Ord-OT": 1.25,
-  "Ord-ND": 0.1,
-  "Ord-ND-OT": 1.375,
-  "RD": 1.3,
-  "RD-OT": 1.69,
-  "RD-ND": 1.43,
-  "RD-ND-OT": 1.859,
-  "SH": 0.3,
-  "SH-OT": 1.69,
-  "SH-ND": 0.43,
-  "SH-ND-OT": 1.859,
-  "LH": 1,
-  "LH-OT": 2.6,
-  "LH-ND": 1.2,
-  "LH-ND-OT": 2.86,
-  "SH-RD": 1.5,
-  "SH-RD-OT": 1.95,
-  "SH-RD-ND": 1.65,
-  "SH-RD-ND-OT": 2.145,
-  "LH-RD": 2.6,
-  "LH-RD-OT": 3.38,
-  "LH-RD-ND": 2.86,
-  "LH-RD-ND-OT": 3.718,
-  "Absence Adjustment": 1,
-  "Late/Undertime Adjustment": 1,
-  "Ord-ND Adj": 0.1,
-  "Total Absent Deduction": 1,
-  "Deminimis Deduction": 1,
-  "Total Late Deduction": 1,
-  "Deminimis Adjustment": 1,
-  "Complexity Pay": 1,
-  "LH-RD-ND Adj": 2.86,
-  "Ord-ND OT Adj": 1.375,
-  "Ord-OT Adj": 1.25,
-  "RD Adj": 1.3,
-  "Absence Adjustment (LESS)": 1,
-  "Deminimis Adjustment (LESS)": 1,
-  "Late/Undertime Adjustment (LESS)": 1,
-  "Ord-OT Adj (LESS)": 1.25,
-  "Ord-ND OT Adj (LESS)": 1.375,
-  "Ord-ND Adj (LESS)": 0.1,
-  "PTO Conversion": 1,
-  "LH Adj": 1,
-  "LH-ND Adj": 1.2,
-  "LH-RD Adj": 2.6,
-  "LH ND-OT Adj": 2.86,
-  "LH-OT Adj": 2.6,
-  "RD Adj (LESS)": 1.3,
-  "RD ND Adj": 1.43,
-  "RD ND Adj (LESS)": 1.43,
-  "RD OT Adj (LESS)": 1.69,
-  "RD ND OT Adj": 1.859,
-  "Service Incentive Leave": 1,
-  "SH Adj": 0.3,
-  "SH ND Adj": 0.43,
-  "SH ND Adj (LESS)": 0.43,
-  "SH ND-OT Adj": 0.43,
-  "SH RD Adj": 1.5,
-  "SH RD Adj (LESS)": 1.5,
-  "SH RD ND Adj": 1.65,
-  "SH RD ND Adj (LESS)": 1.65,
-  "RD OT Adj": 1.69,
-  "SH Adj (LESS)": 0.3,
-  "LH Adj (LESS)": 1,
-  "LH-RD Adj (LESS)": 2.6,
-  "LH-OT Adj (LESS)": 2.6,
-  "SH OT Adj": 1.69
-}
-
-class AttendanceAdjustmentFeature:
+class AttendanceAdjustmentTool:
     """
     Parameters
     ----------
@@ -235,7 +161,7 @@ class AttendanceAdjustmentFeature:
                 f"AttendanceAdjustmentFeature: Incorrect number files | "
                 f"got={len(file_paths)} max={len(required_files)}"
             )
-            self._emit_result("file_exceed_error")
+            self._emit_result("file_count_error")
             return
 
         # ── no currency exchange rate  ─────────────────────────────────────
@@ -412,7 +338,7 @@ class AttendanceAdjustmentFeature:
                     None
                 )
 
-            elif expected == "Payroll Register 30":
+            elif expected == "Payroll Register 28/29/30/31":
                 match = next(
                     (
                         filename for filename in uploaded_files
@@ -517,7 +443,7 @@ class AttendanceAdjustmentFeature:
     # Ported directly from the Unmand Python-block script.
     # ===================================================================
 
-    def generate(self, files: dict, token: str, rates_loc: str, source: str, date: tuple, aud_php: float):
+    def generate(self, files: dict, token: str, rates_loc: str, source: str, sheet_config: dict, date: tuple, aud_php: float):
         """
         Compute the Attendance Adjustment summary and write it to a
         local Excel workbook. Same logic as the original Unmand script,
@@ -551,15 +477,20 @@ class AttendanceAdjustmentFeature:
 
         self._emit_progress(50, "Fetching rates and client details…")
 
-        rates= self._fetch_rates_gst(rates_loc, source)
+        rates, payroll_headers = self._fetch_rates_gst(rates_loc, source, sheet_config)
 
-        if not rates:
-            self.log.warning(f"AttendanceAdjustmentFeature: Error fetching rates utlizing local rates...")
-            rates = RATES
+        if not rates or not payroll_headers:
+            return None
 
         payroll15   = files.get("Payroll Register 15")
-        payroll30   = files.get("Payroll Register 30")
+        payroll30   = files.get("Payroll Register 28/29/30/31")
         emp_list = files.get("Employee List")
+
+        new_headers = self._find_new_columns(payroll15, payroll30, payroll_headers)
+
+        if new_headers:
+            self._emit_result([",".join(new_headers), "new_headers_error"])
+            return None
 
         for label, df in (
             ("Employee List", emp_list),
@@ -598,7 +529,7 @@ class AttendanceAdjustmentFeature:
         self._emit_progress(80, "Computing adjustments…")
 
         attendance_adjustment_php = []
-        rate_keys = list(rates.keys())
+        rate_keys = [key for key, value in rates.items() if pd.notna(value) and value not in (0, "")]
 
         for period_index, att_df in enumerate((payroll15, payroll30)):
             att_records = att_df.to_dict("records")
@@ -706,7 +637,53 @@ class AttendanceAdjustmentFeature:
     # ===================================================================
     # STEP 1 — DOWNLOAD HEADERS REFERENCE
     # ===================================================================
-    def _fetch_rates_gst(self, rates_loc: str, source: str):
+    def _find_new_columns(self, payroll15: pd.DataFrame, payroll30: pd.DataFrame, payroll_headers: list):
+        """
+        Compare the columns of two DataFrames against a list of expected
+        columns and return every column that appears in either DataFrame
+        but is missing from the expected list.
+        Returns
+        -------
+        list[str] or None
+            Unexpected column names (de-duplicated, in order of first
+            appearance) on success, or None on any failure (result
+            already emitted before returning None).
+        """
+        self.log.info(
+            "AttendanceAdjustmentFeature: Checking DataFrame columns "
+            "against expected list"
+        )
+        try:
+            expected = {str(col).strip() for col in payroll_headers}
+
+            # Clean column names the same way as the loaders do
+            cols_a = [str(col).strip() for col in payroll15.columns]
+            cols_b = [str(col).strip() for col in payroll30.columns]
+
+            # dict.fromkeys de-duplicates while preserving order
+            unexpected = [
+                col
+                for col in dict.fromkeys(cols_a + cols_b)
+                if col not in expected
+            ]
+        
+            self.log.info(
+                f"AttendanceAdjustmentFeature: Column check complete | "
+                f"payroll15={len(cols_a)}, payroll30={len(cols_b)}, "
+                f"expected={len(expected)}, unexpected={len(unexpected)}"
+            )
+
+            return unexpected
+        
+        except Exception as e:
+            self.log.warning(
+                f"AttendanceAdjustmentFeature: Failed to check columns — {e}",
+                error=e
+            )
+            self._emit_result("premium_header_error")
+            return None
+        
+    def _fetch_rates_gst(self, rates_loc: str, source: str, sheet_config: dict):
 
         """
         Fetch the Payroll Headers Excel from SharePoint and return the
@@ -732,42 +709,64 @@ class AttendanceAdjustmentFeature:
                 f"AttendanceAdjustmentFeature: Headers download failed | "
                 f"HTTP={response.status_code}"
             )
+            self._emit_result("premium_download_error")
             return None
 
-        sheet_name = (
-            "Sprout Payroll Headers"
-            if source == "Sprout"
-            else "DarwinBox Payroll Headers"
-        )
+        config = sheet_config.get(source)
+
+        if not config:
+            raise ValueError(f"Unsupported source: {source}")
+
+        rates_sheet_name = config["rates"]
+        headers_sheet_name = config["headers"]
 
         self.log.info(
-            f"AttendanceAdjustmentFeature: Parsing headers sheet | "
-            f"sheet={sheet_name}"
+            f"AttendanceAdjustmentFeature: Parsing payroll sheets | "
+            f"source={source}, rates_sheet={rates_sheet_name}, "
+            f"headers_sheet={headers_sheet_name}"
         )
 
         try:
             excel_file = io.BytesIO(response.content)
 
-            df = pd.read_excel(
+            # Load both sheets in one call
+            sheets = pd.read_excel(
                 excel_file,
-                sheet_name=sheet_name,
+                sheet_name=[rates_sheet_name, headers_sheet_name],
                 header=12,
-                engine="openpyxl"
+                engine="openpyxl",
             )
 
-            rates = dict(zip(df["Payroll Headers"], df["Rate"]))
+            rates_df = sheets[rates_sheet_name]
+            headers_df = sheets[headers_sheet_name]
+
+            # Clean column names
+            rates_df.columns = rates_df.columns.astype(str).str.strip()
+            headers_df.columns = headers_df.columns.astype(str).str.strip()
+
+            rates = dict(
+                zip(
+                    rates_df["Payroll Header"],
+                    rates_df["Rate"],
+                )
+            )
+
+            payroll_headers = headers_df["Headers"].dropna().tolist()
 
             self.log.info(
-                f"AttendanceAdjustmentFeature: Loaded {len(rates)} payroll header(s)"
+                f"AttendanceAdjustmentFeature: Loaded "
+                f"{len(rates)} rate(s) and "
+                f"{len(payroll_headers)} payroll header(s)"
             )
 
-            return rates
+            return rates, payroll_headers
 
         except Exception as e:
             self.log.warning(
                 f"AttendanceAdjustmentFeature: Failed to parse headers sheet — {e}",
                 error=e
             )
+            self._emit_result("premium_header_error")
             return None
 
     # ===================================================================

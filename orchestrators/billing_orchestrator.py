@@ -14,7 +14,7 @@ ui/components/body_apps/billing_app.py).
 
 Attendance Summary (formerly "Attendance Adjustment", formerly a Tool)
 now lives under Features and no longer touches SharePoint or Unmand at
-all — files are validated locally, then AttendanceAdjustmentFeature.
+all — files are validated locally, then AttendanceAdjustmentTool.
 generate() runs the computation and writes the output .xlsx directly.
 Rates come from billing_config, AUD-PHP/Month/Year come from
 suite.state (set by the UI or defaulted to the current month).
@@ -34,10 +34,11 @@ from PyQt6.QtCore import QDate, QThread, pyqtSignal
 
 from features.billing.billing import BillingFeature
 from features.billing.checker import BillingCheckerFeature
-from features.billing.attendance_adjustment import AttendanceAdjustmentFeature
+from features.billing.attendance_adjustment import AttendanceAdjustmentTool
+from features.billing.insightful import InsightfulTool
 
 from services.unmand_service import UnmandService
-from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES
+from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES, INSIGHTFUL_STATUSES
 from utils.internet import ok
 
 
@@ -119,38 +120,99 @@ class _BillingValidationWorker(QThread):
 
 
 class _AttendanceAdjustmentWorker(QThread):
-    """Runs the Attendance Summary generation off the main thread."""
-    progress = pyqtSignal(int, str)            # percent, message
-    result   = pyqtSignal(list)            # percent, message
-    finished = pyqtSignal(bool, object)        # success, file_path | error_code
+    progress = pyqtSignal(int, str)
+    result = pyqtSignal(list)
+    finished = pyqtSignal(bool, object)
 
-    def __init__(self, files: dict, token: str, rates_loc: str, source: str, date: tuple, aud_php: float, log, att_adj):
+    def __init__(self, files: dict, token: str, rates_loc: str, source: str, sheet_config: dict, date: tuple, aud_php: float, log, att_adj):
         super().__init__()
-        self.files      = files
-        self.token      = token
-        self.rates_loc  = rates_loc
-        self.source     = source
-        self.date       = date
-        self.aud_php    = aud_php
-        self.log        = log
-        self.att_adj    = att_adj
+        self.files          = files
+        self.token          = token
+        self.rates_loc      = rates_loc
+        self.source         = source
+        self.sheet_config   = sheet_config
+        self.date           = date
+        self.aud_php        = aud_php
+        self.log            = log
+        self.att_adj        = att_adj
+        self.last_error_codes = None 
+
+    def _capture_result(self, code):
+            codes = list(code) if isinstance(code, (list, tuple)) else [code]
+            self.last_error_codes = codes
+            self.result.emit(codes)
 
     def run(self):
         self.att_adj.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
-        self.att_adj.on_result = lambda codes: self.result.emit(
-            list(codes) if isinstance(codes, (list, tuple)) else [codes]
-        )
+        self.att_adj.on_result = self._capture_result
+
         try:
-            result = self.att_adj.generate(self.files, self.token, self.rates_loc, self.source, self.date, self.aud_php)
+            result = self.att_adj.generate(self.files, self.token, self.rates_loc, self.source, self.sheet_config, self.date, self.aud_php)
+
             if result is None:
-                self.finished.emit(False, "processing_error")
+                fallback = self.last_error_codes[0] if self.last_error_codes else "processing_error"
+                self.finished.emit(False, fallback)
             else:
                 self.finished.emit(True, result)
+
         except Exception as e:
             self.log.error(f"_AttendanceAdjustmentWorker: Failed — {e}", error=e)
-            self.finished.emit(False, "processing_error")
+            fallback = self.last_error_codes[0] if self.last_error_codes else "processing_error"
+            self.finished.emit(False, fallback)
+
         finally:
             self.att_adj.on_progress = None
+            self.att_adj.on_result = None
+
+
+class _InsightfulWorker(QThread):
+    """Runs Insightful tracker generation off the main thread.
+
+    Mirrors _AttendanceAdjustmentWorker, but generate() here can finish
+    with result=None for two different reasons: an outright error, or
+    new user(s) being found (tracker updated, run intentionally
+    stopped). Either way the last code captured via on_result is used
+    as the fallback so the UI shows the right message.
+    """
+    progress = pyqtSignal(int, str)
+    result   = pyqtSignal(list)
+    finished = pyqtSignal(bool, object)
+
+    def __init__(self, files: dict, token: str, tracker_loc: str, log, insightful):
+        super().__init__()
+        self.files       = files
+        self.token       = token
+        self.tracker_loc = tracker_loc
+        self.log         = log
+        self.insightful  = insightful
+        self.last_error_codes = None
+
+    def _capture_result(self, code):
+        codes = list(code) if isinstance(code, (list, tuple)) else [code]
+        self.last_error_codes = codes
+        self.result.emit(codes)
+
+    def run(self):
+        self.insightful.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
+        self.insightful.on_result   = self._capture_result
+
+        try:
+            result = self.insightful.generate(self.files, self.token, self.tracker_loc)
+
+            if result is None:
+                fallback = self.last_error_codes[0] if self.last_error_codes else "processing_error"
+                self.finished.emit(False, fallback)
+            else:
+                self.finished.emit(True, result)
+
+        except Exception as e:
+            self.log.error(f"_InsightfulWorker: Failed — {e}", error=e)
+            fallback = self.last_error_codes[0] if self.last_error_codes else "processing_error"
+            self.finished.emit(False, fallback)
+
+        finally:
+            self.insightful.on_progress = None
+            self.insightful.on_result = None
 
 
 class BillingOrchestrator:
@@ -164,21 +226,26 @@ class BillingOrchestrator:
         # -----------------------------------------------------------
         # Feature modules (Billing-only)
         # -----------------------------------------------------------
-        self.billing = BillingFeature(self.log, suite.main_window)
-        self.checker = BillingCheckerFeature(self.log, suite.main_window)
-        self.att_adj = AttendanceAdjustmentFeature(self.log, suite.main_window)
+        self.billing    = BillingFeature(self.log, suite.main_window)
+        self.checker    = BillingCheckerFeature(self.log, suite.main_window)
+        self.att_adj    = AttendanceAdjustmentTool(self.log, suite.main_window)
+        self.insightful = InsightfulTool(self.log, suite.main_window)
 
-        self.billing.on_result      = self._billing_files_preparation_result
-        self.billing.uploaded_files = self._upload_sp_files
-        self.billing.on_progress    = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
+        self.billing.on_result          = self._billing_files_preparation_result
+        self.billing.uploaded_files     = self._upload_sp_files
+        self.billing.on_progress        = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
 
-        self.checker.on_result      = self._checker_files_preparation_result
-        self.checker.uploaded_files = self._generate_validation
-        self.checker.on_progress    = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
+        self.checker.on_result          = self._checker_files_preparation_result
+        self.checker.uploaded_files     = self._generate_validation
+        self.checker.on_progress        = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
 
-        self.att_adj.on_result      = self._att_adj_files_preparation_result
-        self.att_adj.uploaded_files = self._generate_att_adj
-        self.att_adj.on_progress    = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
+        self.att_adj.on_result          = self._att_adj_files_preparation_result
+        self.att_adj.uploaded_files     = self._generate_att_adj
+        self.att_adj.on_progress        = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
+
+        self.insightful.on_result       = self._insightful_files_preparation_result
+        self.insightful.uploaded_files  = self._generate_insightful
+        self.insightful.on_progress     = lambda pct, msg: suite.body.billing.update_processing_progress(pct, msg)
 
         # -----------------------------------------------------------
         # Services — created lazily (only when first needed)
@@ -187,9 +254,10 @@ class BillingOrchestrator:
 
         # Keep worker references alive so the QThreads aren't garbage
         # collected mid-run.
-        self._upload_worker   = None
-        self._validate_worker = None
-        self._att_adj_worker  = None
+        self._upload_worker         = None
+        self._validate_worker       = None
+        self._att_adj_worker        = None
+        self._insightful_worker     = None
 
     # ===================================================================
     # DISPATCH — entry point called by the suite root for any click
@@ -254,6 +322,16 @@ class BillingOrchestrator:
             self.log.info(f"Check Unmand status triggered | guid={self.suite.state.get('guid')}")
             self._check_unmand()
 
+        elif btn == "payroll_headers":
+            url = self.suite.state["billing_config"]["tools"]["att_adj"]["headers_rates"]
+            self.log.info(f"Opening Payroll Headers | url={url}")
+            webbrowser.open(url)
+
+        elif btn == "insightful_tracker":
+            url = self.suite.state["billing_config"]["tools"]["insightful"]["tracker"]
+            self.log.info(f"Opening Insightful Tracker | url={url}")
+            webbrowser.open(url)
+
         elif btn == "open_billing_output":
             billing_output_file = self.suite.state.get("billing_output_file")
             self.log.info(f"Opening billing output | path={billing_output_file}")
@@ -268,15 +346,25 @@ class BillingOrchestrator:
             self.suite.body.billing.show_processing_progress("Opening local folder...", "checker")
             self.checker.prepare_checker_files(cc_names, additional_column_map)
 
-        elif btn == "attendance_summary_generate":
+        elif btn == "attendance_summary_upload":
             self.log.info("Attendance Summary generation triggered")
             self._on_att_adj_upload_clicked()
+
+        elif btn == "insightful_upload":
+            self.log.info("Insightful generation triggered")
+            self._on_insightful_upload_clicked()
 
         elif btn == "open_att_adj_output":
             att_adj_output_file = self.suite.state.get("att_adj_output_file")
             self.log.info(f"Opening Attendance Summary output | path={att_adj_output_file}")
             if att_adj_output_file:
                 os.startfile(att_adj_output_file)
+
+        elif btn == "open_insightful_output":
+            insightful_output_file = self.suite.state.get("insightful_output_file")
+            self.log.info(f"Opening Insightful output | path={insightful_output_file}")
+            if insightful_output_file:
+                os.startfile(insightful_output_file)
 
         elif btn == "open_checker_output":
             variance_file = self.suite.state["billing_variance_file"]
@@ -358,6 +446,9 @@ class BillingOrchestrator:
             files = self.suite.state["billing_config"]["tools"]["att_adj"]["files"]
             self.suite.body.billing.show_attendance_adjustment_tool(files)
 
+        elif "insightful" == clean_tool:
+            files = self.suite.state["billing_config"]["tools"]["insightful"]["files"]
+            self.suite.body.billing.show_insightful_tool(files)
 
     # ===================================================================
     # BILLING AUTOMATION MAIN FLOW
@@ -494,7 +585,7 @@ class BillingOrchestrator:
     # ATTENDANCE SUMMARY MAIN FLOW
     # Local generation only — no SharePoint upload, no Unmand hand-off.
     # Rates/AUD-PHP/Month/Year are read from config + suite.state at
-    # generation time and passed into AttendanceAdjustmentFeature.
+    # generation time and passed into AttendanceAdjustmentTool.
     # generate() as arguments.
     # ===================================================================
 
@@ -506,7 +597,7 @@ class BillingOrchestrator:
         billing_cfg = self.suite.state["billing_config"]
         att_adj_cfg =  billing_cfg["tools"]["att_adj"]
         id_names_cfg = billing_cfg.get("expected_id_names", {})
-        req_files_cfg = att_adj_cfg.get("attendance_summary_files", [])
+        req_files_cfg = att_adj_cfg.get("files", [])
 
         self.exchange_rate = self.suite.body.billing.exchange_rate_input.text()
 
@@ -514,7 +605,7 @@ class BillingOrchestrator:
         self.att_adj.prepare_attendance_adjustment_files(id_names_cfg, req_files_cfg, self.exchange_rate)
 
     def _att_adj_files_preparation_result(self, codes: list):
-        """Handle result codes emitted by AttendanceAdjustmentFeature."""
+        """Handle result codes emitted by AttendanceAdjustmentTool."""
         self.log.section("ATTENDANCE SUMMARY VALIDATION RESULT")
         self.log.info(f"Attendance Summary file preparation complete | code_count={len(codes)}")
 
@@ -546,22 +637,25 @@ class BillingOrchestrator:
         att_adj_cfg = self.suite.state["billing_config"]["tools"].get("att_adj", {})
         rates_loc  = att_adj_cfg.get("rates_loc", "")
         source  = att_adj_cfg.get("source", "")
+        sheet_config  = att_adj_cfg.get("sheet_config", "")
         gst_loc  = att_adj_cfg.get("gst_loc", "")
 
-        #self.att_adj.generate(
-        #    files, 
-        #    self.suite.state["token"],
-        #    rates_loc,
-        #    source,
-        #    (date.year(), date.month(), date.day()),
-        #    float(self.exchange_rate)
-        #    )
+        self.att_adj.generate(
+            files, 
+            self.suite.state["token"],
+            rates_loc,
+            source,
+            sheet_config,
+            (date.year(), date.month(), date.day()),
+            float(self.exchange_rate)
+            )
 
         self._att_adj_worker = _AttendanceAdjustmentWorker(
             files       = files,
             token       = self.suite.state["token"],
             rates_loc   = rates_loc,
             source      = source, # Sprout or Darwin
+            sheet_config= sheet_config,
             date        = (date.year(), date.month(), date.day()),
             aud_php     = float(self.exchange_rate),
             log         = self.log,
@@ -581,6 +675,89 @@ class BillingOrchestrator:
         else:
             self.log.warning(f"Attendance Summary generation failed | code={result}")
             self.suite.body.billing.show_attendance_adjustment_status([result])
+
+    # ===================================================================
+    # INSIGHTFUL MAIN FLOW
+    # Local generation only — no SharePoint upload, no Unmand hand-off.
+    # generation time and passed into InsightfulFeature.
+    # generate() as arguments.
+    # ===================================================================
+
+    def _on_insightful_upload_clicked(self):
+        """Entry point for the Attendance Summary file-selection flow."""
+        self.log.section("ATTENDANCE SUMMARY FILE SELECTION")
+        self.log.info("Attendance Summary file selection initiated")
+
+        billing_cfg = self.suite.state["billing_config"]
+        insightful_cfg =  billing_cfg["tools"]["insightful"]
+        id_names_cfg = billing_cfg.get("expected_id_names", {})
+        req_files_cfg = insightful_cfg.get("files", [])
+
+        self.suite.body.billing.show_processing_progress("Opening local folder...", "insightful")
+        self.insightful.prepare_insightful_files(id_names_cfg, req_files_cfg)
+
+    def _insightful_files_preparation_result(self, codes: list):
+        """Handle result codes emitted by InsightfulTool."""
+        self.log.section("INSIGHTFUL VALIDATION RESULT")
+        self.log.info(f"Insightful file preparation complete | code_count={len(codes)}")
+
+        for code in codes:
+            file_name, status_code = parse_status_code(code)
+            message_template       = INSIGHTFUL_STATUSES.get(status_code, status_code)
+            message                = message_template.format(file_name=file_name or "")
+            is_error               = "error" in status_code
+
+            self.log.result(
+                step=f"Insightful file validation — {file_name or status_code}",
+                success=not is_error,
+                detail=message,
+            )
+
+        self.suite.body.billing.show_insightful_status(codes)
+
+    def _generate_insightful(self, files: dict):
+        """
+        Kick off Insightful tracker generation once files are validated.
+        The tracker location comes from config; generation itself (new
+        user check, tracker update, SharePoint upload) runs in
+        _InsightfulWorker off the main thread.
+        """
+        self.log.section("INSIGHTFUL GENERATION")
+
+        insightful_cfg = self.suite.state["billing_config"]["tools"].get("insightful", {})
+        tracker_loc    = insightful_cfg.get("tracker_loc", "")
+
+        #self.insightful.generate(files, self.suite.state["token"], tracker_loc)
+
+        self._insightful_worker = _InsightfulWorker(
+            files       = files,
+            token       = self.suite.state["token"],
+            tracker_loc = tracker_loc,
+            log         = self.log,
+            insightful  = self.insightful,
+        )
+        self._insightful_worker.progress.connect(self._on_processing_progress)
+        self._insightful_worker.result.connect(self._insightful_files_preparation_result)
+        self._insightful_worker.finished.connect(self._on_insightful_generated)
+        self._insightful_worker.start()
+
+    def _on_insightful_generated(self, success: bool, result):
+        """
+        Handle the outcome of _InsightfulWorker.
+
+        result is either an output Path (success), or a status code
+        string — which may be a genuine error, or "new_user_found"
+        (tracker was updated and re-uploaded, but the run stopped
+        intentionally so the admin can complete the new row).
+        """
+        state = self.suite.state
+        if success:
+            state["insightful_output_file"] = str(result)
+            self.log.info(f"Insightful tracker written | path={result}")
+            self.suite.body.billing.show_insightful_status(["generated_success"])
+        else:
+            self.log.warning(f"Insightful generation stopped | code={result}")
+            self.suite.body.billing.show_insightful_status([result])
 
     # ===================================================================
     # CHECKER MAIN FLOW

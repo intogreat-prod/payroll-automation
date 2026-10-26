@@ -743,7 +743,7 @@ class AttendanceSummaryTool:
 
         3. Standard rounding:
            • Parse "Late By" as HH:MM:SS → total seconds.
-           • If >= 2 hr (7 200 s) → 0.00.
+           • If >= 2 hr 1 min (7 200 s) → 0.00.
            • Else floor to whole minutes → e.g. 01:59:49 → 119.00.
 
         Returns
@@ -787,11 +787,11 @@ class AttendanceSummaryTool:
                         return 0.00, ""
             # If shift not recognised or comparison fails, fall through
 
-        # Order matters — check the stricter threshold first
+        # Order matters — stricter threshold first
         if late_by >= (5 * 3600) and work_duration < (4 * 3600):
             return 0.00, "Unpaid Leave"
 
-        if late_by >= (2 * 3600) + 60:
+        if late_by >= (2 * 3600) + 60: # add 1 minute
             return 0.00, "Present,Half Day Unpaid Leave"
 
         return self._seconds_to_floored_minutes(late_by), ""
