@@ -35,15 +35,11 @@ from features.payroll.checker import CheckerFeature
 from features.payroll.payroll import PayrollFeature
 from features.payroll.dbx_to_sprout import DarwinToSproutTool
 from features.payroll.attendance_summary import AttendanceSummaryTool
+from features.payroll.payroll_premiums import PayrollPremiumsTool
+from services.sharepoint_list_service import SharePointListService
 from services.config_service import ConfigService
 from services.unmand_service import UnmandService
-from ui.statuses import (
-    parse_status_code,
-    PAYROLL_STATUSES,
-    CHECKER_STATUSES,
-    DBX_TO_SPROUT_STATUSES,
-    ATTENDANCE_SUMMARY,
-)
+from ui.statuses import resolve, SUCCESS
 from utils.app_config_user import get
 from utils.internet import ok
 
@@ -151,6 +147,32 @@ class _DBXConversionWorker(QThread):
             self.dbx_to_sprout.on_progress = None
 
 
+class _PremiumsWorker(QThread):
+    """Runs the Payroll Premiums generation off the main thread."""
+    progress = pyqtSignal(int, str)           # percent, message
+    finished = pyqtSignal(bool, object)       # success, file_path | error_code
+
+    def __init__(self, files: dict, lists,log, premiums,):
+        super().__init__()
+        self.files    = files
+        self.lists    = lists
+        self.log      = log
+        self.premiums = premiums
+
+
+    def run(self):
+        self.premiums.on_progress = lambda pct, msg: self.progress.emit(pct, msg)
+
+        try:
+            result = self.premiums.generate(self.files, self.lists)
+            self.finished.emit(True, result)
+        except Exception as e:
+            self.log.error(f"_PremiumsWorker: Failed — {e}", error=e)
+            self.finished.emit(False, "processing_error")
+        finally:
+            self.premiums.on_progress = None
+
+
 class _AttendanceSummaryWorker(QThread):
     """Runs attendance summary processing off the main thread."""
     progress = pyqtSignal(int, str)
@@ -205,6 +227,7 @@ class PayrollOrchestrator:
         self.checker         = CheckerFeature(self.log, suite.main_window)
         self.dbx_to_sprout   = DarwinToSproutTool(self.log, suite.main_window)
         self.att_summary_svc = AttendanceSummaryTool(self.log, suite.main_window)
+        self.premiums_svc    = PayrollPremiumsTool(self.log, suite.main_window)
 
         self.payroll.on_result      = self._payroll_files_preparation_result
         self.payroll.uploaded_files = self._upload_sp_files
@@ -222,6 +245,10 @@ class PayrollOrchestrator:
         self.att_summary_svc.uploaded_files = self._run_attendance_summary
         self.att_summary_svc.on_progress    = lambda pct, msg: suite.body.payroll.update_processing_progress(pct, msg)
 
+        self.premiums_svc.on_result      = self._premiums_preparation_result
+        self.premiums_svc.uploaded_files = self._generate_premiums
+        self.premiums_svc.on_progress    = lambda pct, msg: suite.body.payroll.update_processing_progress(pct, msg)
+
         self.log.info("PayrollOrchestrator: Feature callbacks wired")
 
         # -----------------------------------------------------------
@@ -234,6 +261,7 @@ class PayrollOrchestrator:
         self._upload_worker      = None
         self._validate_worker    = None
         self._att_summary_worker = None
+        self._premiums_worker    = None
 
     # ===================================================================
     # DISPATCH — entry point called by the suite root for any click
@@ -306,13 +334,15 @@ class PayrollOrchestrator:
             self._check_unmand()
 
         elif btn == "open_new_headers":
-            url = self.suite.state["payroll_config"]["new_headers_url"]
+            payroll_unmand = self.suite.state["payroll_config"]["automation"]["unmand"]
+            url = payroll_unmand["new_headers_url"]
             self.log.info(f"Opening new headers URL | url={url}")
             webbrowser.open(url)
 
         elif btn == "open_payroll_ouput":
+            payroll_unmand = self.suite.state["payroll_config"]["automation"]["unmand"]
             url = (
-                self.suite._env_url(self.suite.state["payroll_config"]["output_folder"])
+                self.suite._env_url(payroll_unmand["output_folder"])
                 + self.suite.state["folder_name"].replace("input", "output")
             )
             self.log.info(f"Opening payroll output URL | url={url}")
@@ -340,13 +370,27 @@ class PayrollOrchestrator:
             if att_summary_file:
                 os.startfile(att_summary_file)
 
+        elif btn == "open_payroll_premium_output":
+            premiums_file = self.suite.state.get("premiums_file")
+            self.log.info(f"Opening payroll premiums output | path={premiums_file}")
+            if premiums_file:
+                os.startfile(premiums_file)
+
         elif btn == "payroll_headers":
-            url = self.suite.state["payroll_config"]["headers_url"]
+            payroll_unmand = self.suite.state["payroll_config"]["automation"]["unmand"]
+            url = payroll_unmand["headers_url"]
             self.log.info(f"Opening Payroll Headers | url={url}")
             webbrowser.open(url)
 
+        elif btn == "holiday_calendar":
+            payroll_unmand = self.suite.state["payroll_config"]["tools"]["payroll_premiums"]
+            url = payroll_unmand["holiday_calendar"]
+            self.log.info(f"Opening Holiday Calendar List | url={url}")
+            webbrowser.open(url)
+
         elif btn == "nd_list":
-            url = self.suite.state["payroll_config"]["nd_list_url"]
+            payroll_unmand = self.suite.state["payroll_config"]["automation"]["unmand"]
+            url = payroll_unmand["nd_list_url"]
             self.log.info(f"Opening Night Differential List | url={url}")
             webbrowser.open(url)
 
@@ -355,6 +399,12 @@ class PayrollOrchestrator:
             self.log.info("DarwinBox Payroll Register upload triggered")
             self.suite.body.payroll.show_processing_progress("Opening local folder...", "dbx_to_sprout")
             self.dbx_to_sprout.prepare_darwinbox_payroll(id_names)
+
+        elif btn == "payroll_premiums_upload":
+            id_names = self.suite.state["payroll_config"]["expected_id_names"]
+            self.log.info("Payroll Premiums upload triggered")
+            self.suite.body.payroll.show_processing_progress("Opening local folder...", "payroll_premiums")
+            self.premiums_svc.prepare_premium_files(id_names)
 
         elif btn == "att_summary_upload":
             self.log.info("DarwinBox Attendance Report upload triggered")
@@ -416,8 +466,8 @@ class PayrollOrchestrator:
         self.log.event("Feature selected", feature=feature, source=self.suite.state["source"])
         self.suite.state["feature"] = feature
 
-        payroll_cfg    = self.suite.state["payroll_config"]
-        required_files = payroll_cfg["required_files"]
+        payroll_unmand = self.suite.state["payroll_config"]["automation"]["unmand"]
+        required_files = payroll_unmand["required_files"]
 
         if feature == "payroll_feature":
             self.log.info(f"Payroll Selected | required_files={len(required_files)}")
@@ -427,7 +477,7 @@ class PayrollOrchestrator:
             self.log.info("Checker Selected")
             self.suite.body.payroll.show_checker_feature(self.suite.state["source"])
         elif feature == "settings_feature":
-            deminimis = self.suite.state["payroll_config"]["deminimis"]
+            deminimis = self.suite.state["payroll_config"]["settings"]["deminimis"]
             self.suite.body.payroll.show_settings(deminimis)    
 
     def _on_tool_selected(self, tool: str):
@@ -440,6 +490,8 @@ class PayrollOrchestrator:
             self.suite.body.payroll.show_dbx_to_sprout_tool()
         elif clean_tool == "attendance_summary":
             self.suite.body.payroll.show_attendance_summary_tool()
+        elif clean_tool == "payroll_premiums":
+            self.suite.body.payroll.show_payroll_premiums_tool()
 
     # ===================================================================
     # PAYROLL MAIN FLOW
@@ -473,7 +525,7 @@ class PayrollOrchestrator:
                 self.suite.body.payroll.show_payroll_status(version_status)
                 return
 
-        payroll_cfg    = state["payroll_config"]
+        payroll_cfg    = state["payroll_config"]["automations"]
         expected_files = payroll_cfg["required_files"]
         source         = state["source"]
         token          = state["token"]
@@ -491,15 +543,11 @@ class PayrollOrchestrator:
         self.log.info(f"Payroll file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = PAYROLL_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("payroll", code)
             self.log.result(
-                step=f"File validation — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"File validation — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.payroll.show_payroll_status(codes)
@@ -613,8 +661,9 @@ class PayrollOrchestrator:
         self.log.section("UNMAND START")
 
         state = self.suite.state
-        api_token   = state["payroll_config"]["unmand"][self.suite.envt]["token"]
-        webhook_url = state["payroll_config"]["unmand"][self.suite.envt]["webhook"]
+        unmand_flow = state["payroll_config"]["automation"]["unmand"]["flow"]
+        api_token   = unmand_flow[self.suite.envt]["token"]
+        webhook_url = unmand_flow[self.suite.envt]["webhook"]
 
         self.log.info("Creating UnmandService")
         self._unmand = UnmandService(webhook_url, api_token)
@@ -670,7 +719,7 @@ class PayrollOrchestrator:
         status = self._unmand.check_status(guid)
         self.log.info(f"Unmand status received | status={status}")
 
-        if "success" in status:
+        if resolve("payroll", status).level == SUCCESS:
             id_version = f"ID: {state['id']} - Version: {state['version']}"
             status = f"{status}|{id_version}"
 
@@ -686,15 +735,11 @@ class PayrollOrchestrator:
         self.log.info(f"DarwinBox file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = DBX_TO_SPROUT_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("dbx_to_sprout", code)
             self.log.result(
-                step=f"DarwinBox file — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"DarwinBox file — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.payroll.show_dbx_to_sprout_status(codes)
@@ -755,6 +800,55 @@ class PayrollOrchestrator:
             self.suite.body.payroll.show_dbx_to_sprout_status([result])
 
     # ===================================================================
+    # PAYROLL PREMIUMS MAIN FLOW
+    # ===================================================================
+
+    def _premiums_preparation_result(self, codes: list):
+        """Handle result codes emitted by PayrollPremiumsTool."""
+        self.log.section("PAYROLL PREMIUMS VALIDATION RESULT")
+        self.log.info(f"Payroll Premiums file preparation complete | code_count={len(codes)}")
+
+        for code in codes:
+            r = resolve("payroll_premiums", code)
+            self.log.result(
+                step=f"Payroll Premiums file — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
+            )
+
+        self.suite.body.payroll.show_payroll_premiums_status(codes)
+
+    def _generate_premiums(self, files: dict):
+        """Combine the validated Attendance Summary with the holiday list in a background thread."""
+        self.log.section("PAYROLL PREMIUMS GENERATION")
+
+        self.suite.body.payroll.show_processing_progress("Generating payroll premiums…", "payroll_premiums")
+
+        cfg   = self.suite.state["payroll_config"]["tools"]["payroll_premiums"]
+        lists = SharePointListService(self.suite.state["token"], cfg["site_id"], cfg["holiday_list_id"])
+
+        self.premiums_svc.generate(files, lists)
+
+        #self._premiums_worker = _PremiumsWorker(
+        #    files    = files,
+        #    lists    = lists,
+        #    log      = self.log,
+        #    premiums = self.premiums_svc
+        #)
+        #self._premiums_worker.progress.connect(self._on_processing_progress)
+        #self._premiums_worker.finished.connect(self._on_premiums_done)
+        #self._premiums_worker.start()
+
+    def _on_premiums_done(self, success: bool, result):
+        if success:
+            self.suite.state["premiums_file"] = result
+            self.log.info(f"Payroll premiums workbook written | path={result}")
+            self.suite.body.payroll.show_payroll_premiums_status(["premiums_success"])
+        else:
+            self.log.warning(f"Payroll premiums generation failed | code={result}")
+            self.suite.body.payroll.show_payroll_premiums_status([result])
+
+    # ===================================================================
     # CHECKER MAIN FLOW
     # ===================================================================
 
@@ -764,15 +858,11 @@ class PayrollOrchestrator:
         self.log.info(f"Checker file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = CHECKER_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("payroll_checker", code)
             self.log.result(
-                step=f"Checker file — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"Checker file — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.payroll.show_checker_status(codes)
@@ -841,14 +931,12 @@ class PayrollOrchestrator:
         self.log.info(f"Attendance file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = ATTENDANCE_SUMMARY.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
+            r = resolve("attendance_summary", code)
+
             self.log.result(
-                step=f"Attendance file — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"Attendance file — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
         self.suite.body.payroll.show_attendance_summary_status(codes)
 

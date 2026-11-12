@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 
 from ui.styles import STYLES
-from ui.statuses import *
+from ui.statuses import resolve, aux_codes
 from ui.ui_factory import UIFactory
 
 
@@ -39,7 +39,8 @@ class PayrollBody:
             "checker": 770,
             "settings": 650,
             "dbx_to_sprout": 730,
-            "att_summary": 830
+            "att_summary": 830,
+            "payroll_premiums": 800
         }
 
     # ===================================================================
@@ -201,7 +202,7 @@ class PayrollBody:
     # ===================================================================
     def show_tools(self):
         self.body._clear()
-        self.body._resize(350, 450)
+        self.body._resize(350, 460)
 
         tools_layout = QVBoxLayout()
         tools_layout.setSpacing(4)
@@ -213,6 +214,7 @@ class PayrollBody:
             [
                 ("DarwinBox to Sprout", lambda: self.body._emit_clicked("dbx_to_sprout_tool"), "payroll_button"),
                 ("Attendance Summary",   lambda: self.body._emit_clicked("attendance_summary_tool"),    "payroll_button"),
+                ("Payroll Premiums",   lambda: self.body._emit_clicked("payroll_premiums_tool"),    "payroll_button"),
                 ("◀ Back",                lambda: self.body._emit_clicked("back"),  "payroll_button"),
             ],
             spacing=12,
@@ -230,12 +232,12 @@ class PayrollBody:
 
         col, layout = UIFactory.button_row(
             [
+                ("◀ Back",                lambda: self.body._emit_clicked("back"),  "payroll_button"),
                 ("DarwinBox to Sprout", lambda: self.body._emit_clicked("dbx_to_sprout_tool"), "payroll_button"),
                 ("Attendance Summary",   lambda: self.body._emit_clicked("attendance_summary_tool"),    "payroll_button"),
-                ("◀ Back",                lambda: self.body._emit_clicked("back"),  "payroll_button"),
+                ("Payroll Premiums",   lambda: self.body._emit_clicked("payroll_premiums_tool"),    "payroll_button"),
             ],
-            width=150,
-            parent=self.body
+            parent=self.body,
         )
         layout.addStretch()
         col.setStyleSheet(STYLES['body'])
@@ -346,11 +348,9 @@ class PayrollBody:
 
     def show_settings_save_deminimis_status(self, code):
         self.body._resize(530, self.height["settings"] + 10)
-        self.payroll_settings_status.setText(PAYROLL_STATUSES[code])
-        self.payroll_settings_status.setStyleSheet(
-                f"color: {'#16A34A' if 'success' in code else '#DC2626'};"
-                "font-size: 10px;"
-            )
+        r = resolve("payroll_settings", code)
+        self.payroll_settings_status.setText(r.message)
+        self.payroll_settings_status.setStyleSheet(f"color: {r.hex};font-size: 10px;")
         self.payroll_settings_status.show()
         
     # ===================================================================
@@ -529,7 +529,7 @@ class PayrollBody:
         )
         content_layout.addWidget(payroll_unmand_btn)
         self.body._register_aux_button("payroll", "payroll_unmand", payroll_unmand_btn,
-                                  visible_on=["file_success"])
+                                  visible_on=aux_codes("payroll", "payroll_unmand"))
 
         open_new_btn = UIFactory.button(
             "Open new headers",
@@ -538,7 +538,7 @@ class PayrollBody:
         )
         content_layout.addWidget(open_new_btn)
         self.body._register_aux_button("payroll", "open_new_btn", open_new_btn,
-                                  visible_on=["new_headers_error"])
+                                  visible_on=aux_codes("payroll", "open_new_btn"))
 
         check_unmand_btn = UIFactory.button(
             "Check Unmand Status",
@@ -547,7 +547,7 @@ class PayrollBody:
         )
         content_layout.addWidget(check_unmand_btn)
         self.body._register_aux_button("payroll", "check_unmand_btn", check_unmand_btn,
-                                  visible_on=["unmand_init_success", "unmand_status_pending_error"])
+                                  visible_on=aux_codes("payroll", "check_unmand_btn"))
 
         open_output_btn = UIFactory.button(
             "Open Output",
@@ -556,7 +556,7 @@ class PayrollBody:
         )
         content_layout.addWidget(open_output_btn)
         self.body._register_aux_button("payroll", "open_output_btn", open_output_btn,
-                                  visible_on=["unmand_status_success"])
+                                  visible_on=aux_codes("payroll", "open_output_btn"))
 
         self.body._layout.addWidget(content)
 
@@ -667,13 +667,8 @@ class PayrollBody:
         content_layout.addWidget(open_output_btn)
 
         self.body._register_aux_button("payroll", "open_output_btn", open_output_btn,
-                                    visible_on=["validated_success"])
+                                    visible_on=aux_codes("payroll_checker", "open_output_btn"))
         
-        # Status labels
-        for key, status in CHECKER_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
 
         self.body._layout.addWidget(content)
 
@@ -751,13 +746,8 @@ class PayrollBody:
         content_layout.addWidget(open_output_btn)
 
         self.body._register_aux_button("payroll", "open_output_btn", open_output_btn,
-                                    visible_on=["converted_success"])
+                                    visible_on=aux_codes("dbx_to_sprout", "open_output_btn"))
         
-        # Status labels
-        for key, status in DBX_TO_SPROUT_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
 
         self.body._layout.addWidget(content)
 
@@ -886,13 +876,167 @@ class PayrollBody:
         content_layout.addWidget(open_output_btn)
 
         self.body._register_aux_button("payroll", "open_output_btn", open_output_btn,
-                                    visible_on=["summarized_success"])
+                                    visible_on=aux_codes("attendance_summary", "open_output_btn"))
         
-        # Status labels
-        for key, status in ATTENDANCE_SUMMARY.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
+
+        self.body._layout.addWidget(content)
+
+    def show_payroll_premiums_tool(self):
+        self.body._clear()
+        self._horizontal_menu_tools()
+        self.body._layout.setContentsMargins(10, 10, 10, 10)
+
+        self.body._resize(530, self.height['payroll_premiums'])
+        content = QFrame()
+        content.setObjectName("featureContent")
+        content.setStyleSheet(STYLES["feature_content"])
+
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(8)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+
+        # ── Header ──────────────────────────────────────────────
+        content_layout.addWidget(
+            UIFactory.label(
+                "Payroll Premium",
+                color="white",
+                font_weight="bold",
+                font_size=17
+            )
+        )
+
+        content_layout.addWidget(
+            UIFactory.label(
+                "Processes payroll premium files, validates the uploaded data, "
+                "and generates the required output locally.",
+                font_size=11,
+                color="white"
+            )
+        )
+
+        content_layout.addSpacing(6)
+
+        # ── Details ─────────────────────────────────────────────
+        details_con = QFrame()
+        details_con.setStyleSheet(STYLES["standard_container"])
+
+        details_layout = QVBoxLayout(details_con)
+        details_layout.setContentsMargins(12, 12, 12, 12)
+
+        details_layout.addWidget(
+            UIFactory.label(
+                "ℹ️ Details",
+                color="white",
+                font_weight="bold",
+                font_size=15
+            )
+        )
+
+        details_layout.addWidget(
+            UIFactory.label(
+                "Open the holiday calendar to maintain the payroll premiums.",
+                color="white",
+                font_size=11,
+                padding_bottom=6,
+            )
+        )
+
+        premiums_calendar_btn = UIFactory.button(
+            "Holiday Calendar",
+            lambda: self.body._emit_clicked("holiday_calendar"),
+            style_key="payroll_button"
+        )
+
+        details_layout.addWidget(premiums_calendar_btn)
+
+        content_layout.addWidget(details_con)
+        content_layout.addSpacing(6)
+
+        # ── Required Files ──────────────────────────────────────
+        required_con = QFrame()
+        required_con.setStyleSheet(STYLES["standard_container"])
+
+        required_layout = QVBoxLayout(required_con)
+        required_layout.setContentsMargins(12, 12, 12, 12)
+        required_layout.setSpacing(3)
+
+        required_layout.addWidget(
+            UIFactory.label(
+                "🗂️ Required Files",
+                style_key="header_label"
+            )
+        )
+
+        required_layout.addWidget(
+            UIFactory.label(
+                "Upload the required Excel file below.",
+                style_key="standard",
+                word_wrap=True
+            )
+        )
+
+        columns = QHBoxLayout()
+        columns.setSpacing(24)
+
+        files_layout = QVBoxLayout()
+        files_layout.setSpacing(1)
+
+        for t in ['Attendance Summary', "Overtime Report"]:
+            files_layout.addWidget(
+                UIFactory.label(
+                    f"• {t}",
+                    font_size=11,
+                    color="rgba(200, 200, 200, 1)"
+                )
+            )
+
+        notes_layout = QVBoxLayout()
+        notes_layout.setSpacing(4)
+
+        notes_layout.addWidget(
+            UIFactory.label(
+                "Note:\n"
+                "• Headers in Row 1; single sheet.\n"
+                "• File type must be .xlsx\n"
+                "• Sensitivity should be set to Public\n"
+                "• The file should not be password-protected.\n"
+                "• If required, use INTOGREAT[YYYY].\n"
+                "• File name must contain \"Attendance Summary\".\n",
+                style_key="standard_red",
+                word_wrap=True,
+                align="left"
+            )
+        )
+
+        columns.addLayout(files_layout, 30)
+        columns.addLayout(notes_layout, 70)
+
+        required_layout.addLayout(columns)
+
+        content_layout.addWidget(required_con)
+        content_layout.addStretch()
+
+        # ── Action Buttons ──────────────────────────────────────
+        self.payroll_premium_upload_btn = UIFactory.button(
+            "Upload",
+            lambda: self._on_payroll_premiums_upload_btn_click(),
+            "payroll_button"
+        )
+        content_layout.addWidget(self.payroll_premium_upload_btn)
+
+        open_output_btn = UIFactory.button(
+            "Open Output",
+            lambda: self.body._emit_clicked("open_payroll_premium_output"),
+            "payroll_button"
+        )
+        content_layout.addWidget(open_output_btn)
+
+        self.body._register_aux_button(
+            "payroll",
+            "open_output_btn",
+            open_output_btn,
+            visible_on=aux_codes("payroll_premiums", "open_output_btn")
+        )
 
         self.body._layout.addWidget(content)
     # ===================================================================
@@ -911,6 +1055,12 @@ class PayrollBody:
         self.body._hide_aux_buttons()
         self.body._hide_statuses()
         self.body._emit_clicked("checker_upload")
+
+    def _on_payroll_premiums_upload_btn_click(self):
+        self.body._set_btn_processing(self.payroll_premium_upload_btn, "Processing...")
+        self.body._hide_aux_buttons()
+        self.body._hide_statuses()
+        self.body._emit_clicked("payroll_premiums_upload")
 
     def _on_save_deminimis_clicked(self, deminimis):
         self.body._hide_aux_buttons()
@@ -933,50 +1083,15 @@ class PayrollBody:
     # STATUS UI STATE CHANGES
     # ===================================================================
 
-    def _show_status(self, category, codes, statuses, button_statuses, upload_btn, height, payroll_files):
-        """Render status labels and reveal aux buttons."""
-        result_count = 0
-
-
-        self.body._hide_statuses()
-
-        for code in codes:
-
-            # Parse incoming status code
-            file_name, status_code = parse_status_code(code)
-
-            # Resolve status message
-            message_template = statuses.get(status_code, status_code)
-            message = message_template.format(file_name=file_name or "")
-
-            result_count += 1
-
-            # Create status label
-            stat = UIFactory.label(
-                message,
-                color="red" if "error" in status_code else "green",
-                align="center",
-                selectable=True
-            )
-
-            # Store and render status
-            self.body.statuses["payroll"][code] = stat
-            stat.show()
-            self.body._layout.addWidget(stat)
-
-            # Reveal any aux buttons triggered by status
-            if not category == "settings":
-                self.body._show_aux_buttons_for("payroll", status_code)
-
-            # Extra spacing for visible buttons
-            if status_code in button_statuses:
-                result_count += 2
+    def _show_status(self, tool, codes, upload_btn, height, payroll_files):
+        """Render status labels, reveal aux buttons, resize, restore upload button."""
+        result_count, last_key = self.body.show_status_labels(tool, "payroll", codes)
 
         # Resize window to fit new content
         self.body._resize(530, height + ((result_count + payroll_files) * 10))
 
         # Restore upload button state
-        if not category == "settings" and not status_code == "file_success":
+        if last_key != "file_success":
             self.body._set_btn_default(upload_btn)
 
     # ===================================================================
@@ -995,16 +1110,8 @@ class PayrollBody:
                 setattr(self, attr, None)
 
         self._show_status(
-            category="payroll",
+            tool="payroll",
             codes=codes,
-            statuses=PAYROLL_STATUSES,
-            button_statuses={
-                "new_headers_error",
-                "file_success",
-                "unmand_init_success",
-                "unmand_status_pending_error",
-                "unmand_status_success"
-            },
             upload_btn=self.payroll_upload_btn,
             height=self.height['payroll'] + 15,
             payroll_files=self.required_files_len
@@ -1025,12 +1132,8 @@ class PayrollBody:
                 setattr(self, attr, None)
 
         self._show_status(
-            category="checker",
+            tool="payroll_checker",
             codes=codes,
-            statuses=CHECKER_STATUSES,
-            button_statuses={
-                "validated_success"
-            },
             upload_btn=self.checker_upload_btn,
             height=self.height['checker'],
             payroll_files=0
@@ -1051,14 +1154,28 @@ class PayrollBody:
                 setattr(self, attr, None)
 
         self._show_status(
-            category="checker",
+            tool="dbx_to_sprout",
             codes=codes,
-            statuses=DBX_TO_SPROUT_STATUSES,
-            button_statuses={
-                "converted_success"
-            },
             upload_btn=self.dbx_to_sprout_upload_btn,
             height=self.height['dbx_to_sprout'],
+            payroll_files=0
+        )
+
+    def show_payroll_premiums_status(self, codes):
+
+        # Remove the shared processing progress widgets if they exist
+        for attr in ("processing_status_label", "processing_percent_label", "processing_progress"):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                self.body._layout.removeWidget(widget)
+                widget.deleteLater()
+                setattr(self, attr, None)
+
+        self._show_status(
+            tool="payroll_premiums",
+            codes=codes,
+            upload_btn=self.payroll_premium_upload_btn,
+            height=self.height['payroll_premiums'],
             payroll_files=0
         )
 
@@ -1073,12 +1190,8 @@ class PayrollBody:
                 setattr(self, attr, None)
 
         self._show_status(
-            category="checker",
+            tool="attendance_summary",
             codes=codes,
-            statuses=ATTENDANCE_SUMMARY,
-            button_statuses={
-                "summarized_success"
-            },
             upload_btn=self.att_summary_upload_btn,
             height=self.height['att_summary'],
             payroll_files=0

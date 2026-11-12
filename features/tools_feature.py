@@ -25,7 +25,7 @@ orchestrator.py.
 Status codes
 ------------
 Every result (success or error) is reported as (name, status_code),
-where status_code keys into EXCEL_LOCKER_STATUSES in ui/statuses.py —
+where status_code keys into STATUSES["excel_locker"] in ui/statuses.py —
 Body resolves the code to its display message. Nothing in this file
 hardcodes user-facing text.
 """

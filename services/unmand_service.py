@@ -16,7 +16,7 @@ import requests
 
 class UnmandService:
 
-    # Maps Unmand's task.status values to PAYROLL_STATUSES keys
+    # Maps Unmand's task.status values to status keys in ui/statuses.py (payroll + billing)
     STATUS_MAP = {
         "SUCCESS":  "unmand_status_success",
         "ERROR":    "unmand_status_error",
@@ -41,7 +41,7 @@ class UnmandService:
 
     def check_status(self, task_guid: str) -> str:
         """
-        Polls the task status endpoint and returns a PAYROLL_STATUSES key.
+        Polls the task status endpoint and returns a status key (see ui/statuses.py).
         Raises UserWarning on a non-2xx response.
         """
         url      = self._STATUS_ENDPOINT.format(task_guid=task_guid)

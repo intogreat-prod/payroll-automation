@@ -38,7 +38,7 @@ from features.billing.attendance_adjustment import AttendanceAdjustmentTool
 from features.billing.insightful import InsightfulTool
 
 from services.unmand_service import UnmandService
-from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES, INSIGHTFUL_STATUSES
+from ui.statuses import resolve
 from utils.internet import ok
 
 
@@ -481,15 +481,11 @@ class BillingOrchestrator:
         self.log.info(f"Billing file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = BILLING_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("billing", code)
             self.log.result(
-                step=f"Billing file validation — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"Billing file validation — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.billing.show_billing_status(codes)
@@ -610,15 +606,11 @@ class BillingOrchestrator:
         self.log.info(f"Attendance Summary file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = ATT_ADJ_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("att_adj", code)
             self.log.result(
-                step=f"Attendance Summary file validation — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"Attendance Summary file validation — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.billing.show_attendance_adjustment_status(codes)
@@ -640,15 +632,15 @@ class BillingOrchestrator:
         sheet_config  = att_adj_cfg.get("sheet_config", "")
         gst_loc  = att_adj_cfg.get("gst_loc", "")
 
-        self.att_adj.generate(
-            files, 
-            self.suite.state["token"],
-            rates_loc,
-            source,
-            sheet_config,
-            (date.year(), date.month(), date.day()),
-            float(self.exchange_rate)
-            )
+        #self.att_adj.generate(
+        #    files, 
+        #    self.suite.state["token"],
+        #    rates_loc,
+        #    source,
+        #    sheet_config,
+        #    (date.year(), date.month(), date.day()),
+        #    float(self.exchange_rate)
+        #    )
 
         self._att_adj_worker = _AttendanceAdjustmentWorker(
             files       = files,
@@ -702,15 +694,11 @@ class BillingOrchestrator:
         self.log.info(f"Insightful file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = INSIGHTFUL_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("insightful", code)
             self.log.result(
-                step=f"Insightful file validation — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"Insightful file validation — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.billing.show_insightful_status(codes)
@@ -769,15 +757,11 @@ class BillingOrchestrator:
         self.log.info(f"Checker file preparation complete | code_count={len(codes)}")
 
         for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template       = BILLING_CHECKER_STATUSES.get(status_code, status_code)
-            message                = message_template.format(file_name=file_name or "")
-            is_error               = "error" in status_code
-
+            r = resolve("billing_checker", code)
             self.log.result(
-                step=f"Billing checker file — {file_name or status_code}",
-                success=not is_error,
-                detail=message,
+                step=f"Billing checker file — {r.value or r.key}",
+                success=r.ok,
+                detail=r.message,
             )
 
         self.suite.body.billing.show_checker_status(codes)

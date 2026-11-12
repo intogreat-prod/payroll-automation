@@ -8,7 +8,8 @@ behaviour stay consistent across screens. No business logic here.
 from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QLabel, QLineEdit,
     QFrame, QWidget, QVBoxLayout, QHBoxLayout, 
-    QCalendarWidget, QDialog, QGridLayout
+    QCalendarWidget, QDialog, QGridLayout,
+    QScrollArea
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QTextCharFormat, QColor
@@ -484,33 +485,71 @@ class UIFactory:
 
     # -------------------------------------------------------------------------
     # BUTTON ROW
+
     @staticmethod
-    def button_row(buttons: list[tuple], width: int = None, height: int = None,
-                    spacing: int = 10, margin: tuple = (10, 10, 10, 10),
-                    parent: QWidget = None, use_container: bool = True,
-                    con_style_key: str = "") -> tuple[QWidget | None, QHBoxLayout]:
+    def button_row(
+        buttons: list[tuple],
+        width: int = None,
+        height: int = None,
+        spacing: int = 10,
+        margin: tuple = (10, 10, 10, 10),
+        parent: QWidget = None,
+        use_container: bool = True,
+        con_style_key: str = "",
+        scrollable: bool = False,
+        vertical_scroll: bool = False,
+    ):
         """
         Horizontal row of buttons.
-        Each entry in buttons is (text, callback) or (text, callback, style_key).
-        Returns (container, layout) — container is None if use_container=False.
+        Returns:
+            (widget, layout)
+        widget will be:
+            - container if scrollable=False
+            - QScrollArea if scrollable=True
         """
+
         if use_container:
             container = QWidget(parent)
-            layout    = QHBoxLayout(container)
+            layout = QHBoxLayout(container)
             container.setStyleSheet(con_style_key)
-
         else:
-            container = None
-            layout    = QHBoxLayout()
+            container = QWidget(parent)
+            layout = QHBoxLayout(container)
 
         layout.setContentsMargins(*margin)
         layout.setSpacing(spacing)
 
         for item in buttons:
             text, callback = item[0], item[1]
-            style_key      = item[2] if len(item) > 2 else "button"
+            style_key = item[2] if len(item) > 2 else "button"
             icon = item[3] if len(item) > 3 else None
-            layout.addWidget(UIFactory.button(text, callback, style_key, width=width, height=height, icon=icon))
+
+            layout.addWidget(
+                UIFactory.button(
+                    text,
+                    callback,
+                    style_key,
+                    width=width,
+                    height=height,
+                    icon=icon
+                )
+            )
+
+        if scrollable:
+            scroll = QScrollArea(parent)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+            scroll.setViewportMargins(0, 0, 0, 50)
+
+            scroll.setWidget(container)
+
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            scroll.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded if vertical_scroll else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+
+            return scroll, layout
 
         return container, layout
 

@@ -201,6 +201,7 @@ class Orchestrator:
             "variance_file": None,
             "billing_variance_file": None,
             "converted_file": None,
+            "premiums_file": None,
             "version":       "v1",
             "id":            now.strftime("%Y%m%d_%H%M%S"),
             "month_year":    now.strftime("%B %Y")
@@ -302,6 +303,12 @@ class Orchestrator:
 
         self.log.info("Orchestrator: Initialisation complete")
 
+        # DEV shortcut: ENVT=DEV + DEV_START=<tool> jumps straight into
+        # Payroll → Tools → <tool> with Upload already clicked.
+        self._dev_start = self._read_dev_start()
+        if self._dev_start:
+            self.log.warning(f"Orchestrator: DEV shortcut enabled | tool={self._dev_start}")
+
     # ===================================================================
     # HELPERS
     # ===================================================================
@@ -319,6 +326,30 @@ class Orchestrator:
             return self.billing_orch
         return None
 
+    def _read_dev_start(self):
+        """Return the DEV_START tool name, or None. Only honoured when ENVT=DEV and never in a packed .exe."""
+        if getattr(sys, "frozen", False):
+            return None
+        if get("ENVT", "").strip().upper() != "DEV":
+            return None
+        target = get("DEV_START", "").strip().lower()
+        if not target:
+            return None
+        if target not in self._DEV_START_TARGETS:
+            self.log.warning(
+                f"Orchestrator: unknown DEV_START={target!r} | valid={list(self._DEV_START_TARGETS)}"
+            )
+            return None
+        return target
+
+    def _run_dev_start(self):
+        """Navigate Tools → <tool> and press Upload. One-shot."""
+        tool_click, upload_method = self._DEV_START_TARGETS[self._dev_start]
+        self.log.warning(f"Orchestrator: DEV — jumping to {self._dev_start}")
+        self._dev_start = None  # one-shot so Back / logout / Retry behave normally
+        for step in ("tools_menu", tool_click):
+            self._handle_body_clicks(step)
+        getattr(self.body.payroll, upload_method)()
     # ===================================================================
     # BREADCRUMB NAV TRAIL
     # ===================================================================
@@ -336,6 +367,13 @@ class Orchestrator:
         "billing_feature":    "Billing Automation",
         "dbx_to_sprout_tool": "DarwinBox → Sprout",
         "att_summary_tool":   "Attendance Summary",
+    }
+
+    # DEV_START value → (Tools-menu click string, Upload handler on body.payroll)
+    _DEV_START_TARGETS = {
+        "payroll_premiums":   ("payroll_premiums_tool",   "_on_payroll_premiums_upload_btn_click"),
+        "attendance_summary": ("attendance_summary_tool", "_on_attendance_summary_upload_btn_click"),
+        "dbx_to_sprout":      ("dbx_to_sprout_tool",      "_on_dbx_to_sprout_upload_btn_click"),
     }
 
     def _refresh_breadcrumb(self):
@@ -555,13 +593,20 @@ class Orchestrator:
     def start(self):
         """
         Check connectivity and show the appropriate initial screen.
-
         Called once at startup and again if the user clicks "Retry"
         from the no-internet screen.
         """
         self.log.section("APP START")
-        self.log.info("Orchestrator: Checking internet connectivity")
 
+        if self._dev_start:
+            self.log.warning("Orchestrator: DEV — skipping internet check")
+            self._suite_ready = False
+            self.body._breadcrumb.hide()
+            self.body.show_login()   # login form must exist for status updates
+            self._login()            # silent MSAL if a cached token exists
+            return
+
+        self.log.info("Orchestrator: Checking internet connectivity")
         if internet_available():
             self.log.info("Orchestrator: Internet available — showing login screen")
             self._suite_ready = False
@@ -688,7 +733,13 @@ class Orchestrator:
             #if self.envt == "DEV":
             #    raise EnvironmentError("DEV build reached a production user — aborting.")
 
-
+            if self._dev_start:
+                self.log.warning("Orchestrator: DEV — skipping update check")
+                self.state["current"] = self.state["current"] or "DEV"
+                self.state["releases"] = []
+                self._on_suite_app_selected("payroll_app")
+                return
+            
             self._check_for_update()
 
         else:
@@ -709,6 +760,9 @@ class Orchestrator:
                 self.billing_orch.go_home()
             
             self._refresh_breadcrumb()
+
+            if config_type == "payroll" and self._dev_start:
+                self._run_dev_start()
 
     # ===================================================================
     # UPDATE CHECK  (async)

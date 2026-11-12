@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QDate
 
 from ui.styles import STYLES
-from ui.statuses import parse_status_code, BILLING_STATUSES, BILLING_CHECKER_STATUSES, ATT_ADJ_STATUSES, INSIGHTFUL_STATUSES
+from ui.statuses import aux_codes
 from ui.ui_factory import UIFactory
 
 
@@ -451,7 +451,7 @@ class BillingBody:
         )
         content_layout.addWidget(billing_unmand_btn)
         self.body._register_aux_button("billing", "billing_unmand", billing_unmand_btn,
-                                visible_on=["file_success"])
+                                visible_on=aux_codes("billing", "billing_unmand"))
 
         check_unmand_btn = UIFactory.button(
             "Check Unmand Status",
@@ -460,7 +460,7 @@ class BillingBody:
         )
         content_layout.addWidget(check_unmand_btn)
         self.body._register_aux_button("billing", "check_unmand_btn", check_unmand_btn,
-                                visible_on=["unmand_init_success", "unmand_status_pending_error"])
+                                visible_on=aux_codes("billing", "check_unmand_btn"))
 
         open_output_btn = UIFactory.button(
             "Open Output",
@@ -469,12 +469,8 @@ class BillingBody:
         )
         content_layout.addWidget(open_output_btn)
         self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
-                                visible_on=["unmand_status_success"])
+                                visible_on=aux_codes("billing", "open_output_btn"))
 
-        for key, status in BILLING_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
 
         content_layout.addStretch()
 
@@ -507,33 +503,7 @@ class BillingBody:
                 widget.deleteLater()
                 setattr(self, attr, None)
 
-        self.body._hide_statuses()
-        result_count = 0
-        status_code  = ""
-
-        for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template = BILLING_STATUSES.get(status_code, status_code)
-            message = message_template.format(file_name=file_name or "")
-            result_count += 1
-
-            stat = UIFactory.label(
-                message,
-                color="red" if "error" in status_code else "green",
-                align="center",
-                selectable=True
-            )
-            self.body.statuses["billing"][code] = stat
-            stat.show()
-            self.body._layout.addWidget(stat)
-
-            self.body._show_aux_buttons_for("billing", status_code)
-
-            if status_code in {
-                "file_success", "unmand_init_success",
-                "unmand_status_pending_error", "unmand_status_success"
-            }:
-                result_count += 2
+        result_count, status_code = self.body.show_status_labels("billing", "billing", codes)
 
         self.body._resize(
             530,
@@ -618,13 +588,8 @@ class BillingBody:
         content_layout.addWidget(open_output_btn)
 
         self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
-                                    visible_on=["validated_success"])
+                                    visible_on=aux_codes("billing_checker", "open_output_btn"))
 
-        # Status labels
-        for key, status in BILLING_CHECKER_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
 
         self.body._layout.addWidget(content)
 
@@ -663,49 +628,26 @@ class BillingBody:
                 widget.deleteLater()
                 setattr(self, attr, None)
 
-        self.body._hide_statuses()
-        result_count = 0
-        status_code = ""
+        result_count, status_code = self.body.show_status_labels("billing_checker", "billing", codes)
 
-        for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template = BILLING_CHECKER_STATUSES.get(status_code, status_code)
-            message = message_template.format(file_name=file_name or "")
-            result_count += 1
-
-            stat = UIFactory.label(
-                message,
-                color="red" if "error" in status_code else "green",
+        if status_code == "validated_success" and summary:
+            result_count += 2
+            self.accuracy_label = UIFactory.label(
+                f"Accuracy: {summary['accuracy_pct']}% "
+                f"(tolerance ± {summary['var_tolerance']} AUD)",
+                color="green" if summary['accuracy_pct'] >= 95 else "orange",
                 align="center",
-                selectable=True
+                selectable=True,
             )
-            self.body.statuses["billing"][code] = stat
-            stat.show()
-            self.body._layout.addWidget(stat)
+            self.body._layout.addWidget(self.accuracy_label)
 
-            self.body._show_aux_buttons_for("billing", status_code)
-
-            if status_code == "validated_success":
-                result_count += 2
-
-                if summary:
-                    result_count += 2
-                    self.accuracy_label = UIFactory.label(
-                        f"Accuracy: {summary['accuracy_pct']}% "
-                        f"(tolerance ± {summary['var_tolerance']} AUD)",
-                        color="green" if summary['accuracy_pct'] >= 95 else "orange",
-                        align="center",
-                        selectable=True,
-                    )
-                    self.body._layout.addWidget(self.accuracy_label)
-
-                    self.clients_label = UIFactory.label(
-                        f"Clients matched: {summary['correct_clients']} / {summary['total_clients']}",
-                        style_key="standard",
-                        align="center",
-                        selectable=True,
-                    )
-                    self.body._layout.addWidget(self.clients_label)
+            self.clients_label = UIFactory.label(
+                f"Clients matched: {summary['correct_clients']} / {summary['total_clients']}",
+                style_key="standard",
+                align="center",
+                selectable=True,
+            )
+            self.body._layout.addWidget(self.clients_label)
 
         self.body._resize(530, self.height['checker'] + (result_count * 10))
 
@@ -886,13 +828,8 @@ class BillingBody:
         content_layout.addWidget(open_output_btn)
 
         self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
-                                    visible_on=["generated_success"])
+                                    visible_on=aux_codes("att_adj", "open_output_btn"))
 
-        # Status labels
-        for key, status in ATT_ADJ_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
 
         self.body._layout.addWidget(content)
 
@@ -919,27 +856,7 @@ class BillingBody:
                 widget.deleteLater()
                 setattr(self, attr, None)
 
-        self.body._hide_statuses()
-        result_count = 0
-        status_code  = ""
-
-        for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template = ATT_ADJ_STATUSES.get(status_code, status_code)
-            message = message_template.format(file_name=file_name or "")
-            result_count += 1
-
-            stat = UIFactory.label(
-                message,
-                color="red" if "error" in status_code else "green",
-                align="center",
-                selectable=True
-            )
-            self.body.statuses["billing"][code] = stat
-            stat.show()
-            self.body._layout.addWidget(stat)
-
-            self.body._show_aux_buttons_for("billing", status_code)
+        result_count, status_code = self.body.show_status_labels("att_adj", "billing", codes)
 
         self.body._resize(530, self.height['att_adj'] + (self.att_file_count * 10) + (result_count * 10))
 
@@ -1070,13 +987,8 @@ class BillingBody:
         content_layout.addWidget(open_output_btn)
 
         self.body._register_aux_button("billing", "open_output_btn", open_output_btn,
-                                    visible_on=["generated_success"])
+                                    visible_on=aux_codes("insightful", "open_output_btn"))
 
-        # Status labels
-        for key, status in INSIGHTFUL_STATUSES.items():
-            lbl = UIFactory.label(status, color="red" if "error" in key else "green", align="center")
-            lbl.hide()
-            content_layout.addWidget(lbl)
 
         self.body._layout.addWidget(content)
 
@@ -1103,27 +1015,7 @@ class BillingBody:
                 widget.deleteLater()
                 setattr(self, attr, None)
 
-        self.body._hide_statuses()
-        result_count = 0
-        status_code  = ""
-
-        for code in codes:
-            file_name, status_code = parse_status_code(code)
-            message_template = INSIGHTFUL_STATUSES.get(status_code, status_code)
-            message = message_template.format(file_name=file_name or "")
-            result_count += 1
-
-            stat = UIFactory.label(
-                message,
-                color="red" if "error" in status_code else "green",
-                align="center",
-                selectable=True
-            )
-            self.body.statuses["billing"][code] = stat
-            stat.show()
-            self.body._layout.addWidget(stat)
-
-            self.body._show_aux_buttons_for("billing", status_code)
+        result_count, status_code = self.body.show_status_labels("insightful", "billing", codes)
 
         self.body._resize(530, self.height['insightful'] + (self.att_file_count * 10) + (result_count * 10))
 

@@ -22,7 +22,7 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QDate
 from PyQt6.QtGui import QPixmap
 
 from ui.styles import STYLES
-from ui.statuses import *
+from ui.statuses import resolve
 from ui.ui_factory import UIFactory
 from ui.components.login_form import LoginForm
 from utils.file_utils import resource_path
@@ -201,6 +201,41 @@ class Body(QWidget):
             "widget":     widget,
             "visible_on": visible_on
         }
+
+    def show_status_labels(self, tool, feature, codes):
+        """
+        Single render path for every tool/automation status.
+
+        Hides the previous statuses, adds one label per code (coloured by the
+        status level), reveals the aux buttons the status asks for, and
+        returns (result_count, last_key) so the caller can size the window and
+        restore its upload button.
+
+        tool    : key into ui.statuses.STATUSES (e.g. "payroll", "billing_checker")
+        feature : key into self.statuses / self.buttons ("payroll" | "billing")
+        """
+        self._hide_statuses()
+        result_count, last_key = 0, ""
+
+        for code in codes:
+            r = resolve(tool, code)
+
+            stat = UIFactory.label(
+                r.message,
+                color=r.color,
+                align="center",
+                selectable=True
+            )
+            self.statuses[feature][code] = stat
+            stat.show()
+            self._layout.addWidget(stat)
+
+            self._show_aux_buttons_for(feature, r.key)
+
+            result_count += 1 + r.extra_lines
+            last_key = r.key
+
+        return result_count, last_key
 
     def _set_btn_processing(self, btn, processing_text="Processing..."):
         """Switch a button to its processing state and disable it."""
@@ -1188,23 +1223,16 @@ class Body(QWidget):
             code_ = code
             filename = ""
 
-        if "success" in code_ or "error" in code_:
+        r = resolve("app_settings", code_, value=filename or "")
+
+        # Any finished outcome re-enables the button; only "uploading" (info)
+        # keeps it in its "Sharing..." state.
+        if r.is_final:
             self.share_logs_btn.setDisabled(False)
             self.share_logs_btn.setText("Share Logs with Support")
 
-        message_template = APP_SETTINGS_STATUSES[code_]
-        status = message_template.format(file_name=filename or "")
-
-        if "log" in status:
-            status = status.replace(" log/s", "")
-
-
-        self.app_settings_status.setText(status)
-        
-        self.app_settings_status.setStyleSheet(
-                f"color: {'#16A34A' if 'success' in code_ else '#DC2626' if 'error' in code_ else '#D3D0D0'};"
-                "font-size: 10px;"
-            )
+        self.app_settings_status.setText(r.message)
+        self.app_settings_status.setStyleSheet(f"color: {r.hex};font-size: 10px;")
         self.app_settings_status.show()
 
     # ===================================================================
@@ -1551,7 +1579,7 @@ class Body(QWidget):
         - Multi-file, no errors: "5 out of 5 locked."
         - Single-file, no errors: "filename.xlsx locked successfully."
         - Errors present: one line per file, resolved from
-          EXCEL_LOCKER_STATUSES (see ui/statuses.py) via each
+          STATUSES["excel_locker"] (see ui/statuses.py) via each
           (name, status_code) pair in `errors`.
         Box height grows/shrinks to fit the number of lines shown.
         """
@@ -1561,14 +1589,14 @@ class Body(QWidget):
 
         if not errors:
             if single_file and single_name:
-                message = EXCEL_LOCKER_STATUSES["locked_success"].format(file_name=single_name)
+                message = resolve("excel_locker", "locked_success", value=single_name).message
             else:
                 message = f"{locked} out of {total} locked successfully."
             line_count = 1
             is_success = True
         else:
             lines = [
-                EXCEL_LOCKER_STATUSES.get(code, code).format(file_name=name)
+                resolve("excel_locker", code, value=name).message
                 for name, code in errors
             ]
             if locked > 0:
