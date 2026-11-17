@@ -331,7 +331,7 @@ STATUSES: dict[str, dict[str, Status]] = {
     "payroll_premiums": {
         **_COMMON, **_ONE_FILE, **_exceed(1),
         "premiums_success":
-            _ok("Attendance Summary and holidays were combined successfully.",
+            _ok("Attendance Premiums generated successfully .",
                 aux=("open_output_btn",), lines=2),
 
         # File identity (by file name)

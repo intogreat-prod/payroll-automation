@@ -82,8 +82,10 @@ DEBUG_PREMIUM_OT = [
 # NOT COMPUTED / SKIPPED
 # ============================================================
 DEBUG_OTHER = [
+    "IE0-2187",  # Nov 2  – (No NSD) policy, holiday OT 05:30-14:30 -> SH 7:30 + SH-ND 0:30 (OT always NSD)
+    "IE0-1134",  # Nov 2  – OT window 21:00, Clock In 21:25 -> starts at Clock In -> SH 0:34 + SH-ND 1:59
     "IE0-1727",  # Oct 26 – early 20:53 on 9PM-6AM + 4h post-shift OT -> start 21:00 -> Ord 1 + Ord-ND 7 + RD-OT 4
-    "IE0-063",   # Oct 21 – early 04:07 on 4:30AM shift (early minutes are NSD) -> Clock In kept
+    "IE0-063",   # Oct 21 – early 04:07 on 4:30AM shift -> start 04:30 -> Ord 6:30 + Ord-ND 1:30
     "IE0-2182",  # Oct 23 – Present, blank Policy -> Breakdown Valid False, "Blank policy."
     "IE0-2216",  # Nov 5  – Clock 05:52-22:20 (16:28) -> CHECK: possible missing clock out
     "IE0-1138",  # Oct 31 – late 0:23, no OT -> start snapped 0:31 to Clock Out -> SH-ND 1:00 after midnight

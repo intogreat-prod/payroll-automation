@@ -827,17 +827,17 @@ class PayrollOrchestrator:
         cfg   = self.suite.state["payroll_config"]["tools"]["payroll_premiums"]
         lists = SharePointListService(self.suite.state["token"], cfg["site_id"], cfg["holiday_list_id"])
 
-        self.premiums_svc.generate(files, lists)
+        #self.premiums_svc.generate(files, lists)
 
-        #self._premiums_worker = _PremiumsWorker(
-        #    files    = files,
-        #    lists    = lists,
-        #    log      = self.log,
-        #    premiums = self.premiums_svc
-        #)
-        #self._premiums_worker.progress.connect(self._on_processing_progress)
-        #self._premiums_worker.finished.connect(self._on_premiums_done)
-        #self._premiums_worker.start()
+        self._premiums_worker = _PremiumsWorker(
+            files    = files,
+            lists    = lists,
+            log      = self.log,
+            premiums = self.premiums_svc
+        )
+        self._premiums_worker.progress.connect(self._on_processing_progress)
+        self._premiums_worker.finished.connect(self._on_premiums_done)
+        self._premiums_worker.start()
 
     def _on_premiums_done(self, success: bool, result):
         if success:

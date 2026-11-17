@@ -232,42 +232,52 @@ def has_overtime(value: Any) -> bool:
 # ============================================================
 def parse_clock_time(value: Any) -> Optional[time]:
     """
-    Convert a clock value into time.
-    Source files are 24-hour ("HH:MM:SS"); those formats are tried first.
-    AM/PM is still accepted for hand-edited cells.
-    Example:
-        "22:30:00"              -> time(22, 30)
-        "10:30 PM"              -> time(22, 30)
-        0.9375                  -> time(22, 30)   (Excel time)
-        "2026-08-21 22:30:00"   -> time(22, 30)   (full date-time text)
+    Convert a clock boundary into time at payroll minute precision.
+
+    Clock In / Clock Out timestamps are truncated to the minute before any
+    payroll slicing. Seconds are dropped, never rounded. Duration fields are
+    handled separately by parse_duration() and retain their second precision.
+
+    Examples:
+        "00:00:02"            -> time(0, 0)
+        "20:53:59"            -> time(20, 53)
+        "10:30:45 PM"         -> time(22, 30)
+        0.9375                -> time(22, 30)
+        "2026-08-21 22:30:45" -> time(22, 30)
     """
     if is_missing(value):
         return None
+
+    def minute_precision(parsed: time) -> time:
+        return parsed.replace(second=0, microsecond=0)
+
     if isinstance(value, time):
-        return value.replace(microsecond=0)
+        return minute_precision(value)
+
     if isinstance(value, (datetime, pd.Timestamp)):
-        return value.time().replace(microsecond=0)
+        return minute_precision(value.time())
+
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         if 0 <= float(value) < 1:
             total_seconds = round(float(value) * SECONDS_PER_DAY) % SECONDS_PER_DAY
             hours, remainder = divmod(total_seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            return time(hours, minutes, seconds)
+            minutes, _ = divmod(remainder, 60)
+            return time(hours, minutes)
         return None
 
     text = re.sub(r"\s+", "", normalize_text(value).upper())
+
     for clock_format in ("%H:%M:%S", "%H:%M", "%I:%M:%S%p", "%I:%M%p", "%I%p"):
         try:
-            return datetime.strptime(text, clock_format).time()
+            return minute_precision(datetime.strptime(text, clock_format).time())
         except ValueError:
             continue
 
-    # Fallback: full date-time text such as "2026-08-21 22:00:00"
+    # Fallback: full date-time text such as "2026-08-21 22:00:45"
     parsed = pd.to_datetime(str(value), errors="coerce")
     if pd.isna(parsed):
         return None
-    return parsed.time().replace(microsecond=0)
-
+    return minute_precision(parsed.time())
 
 def combine_date_and_time(work_date: Any, time_value: Any) -> Optional[datetime]:
     """

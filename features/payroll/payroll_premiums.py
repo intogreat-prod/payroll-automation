@@ -595,6 +595,13 @@ class PayrollPremiumsTool:
         results = []
 
         for _, row in att_df.iterrows():
+
+            id = row.get("Employee ID")
+            date = row.get("Date")
+
+            if id == "IE0-063":
+                pass
+
             # 0. Pending request (Detailed Status) -> skip until resolved
             if is_request_pending(row):
                 results.append(breakdown_not_computed(row, PENDING_REQUEST_REMARK))

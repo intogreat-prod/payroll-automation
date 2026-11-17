@@ -31,7 +31,7 @@ paid and never NSD. On OT days, Hours INCLUDES the OT.
 Checks
     is_missing_clock_in() -> clock policy + no Clock In -> "MISSING CLOCK IN", not computed
     check_logs()          -> "CHECK: No Clock Out." / "CHECK: Clock In-Out over 16h" (remark only)
-    snap_early_start()    -> early Clock In BEFORE NSD on a shift that runs into NSD -> Shift start
+    snap_early_start()    -> early Clock In on a shift that touches NSD -> Shift start
     snap_late_start()     -> late Clock In -> end lined up with Clock Out (seconds only)
     finish_result()       -> blank Policy with paid hours -> Breakdown Valid False, "Blank policy."
     check_attendance()    -> "CHECK: ..." flags in Detailed Remarks (row still sliced)
@@ -43,6 +43,7 @@ Debug IDs live in debug_ids.py.
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
@@ -64,6 +65,7 @@ from features.payroll.premiums.helpers import (
     duration_to_hm,
     duration_to_seconds,
     format_duration,
+    align_to_shift,
     get_clock_window,
     get_shift_window,
     is_missing,
@@ -109,6 +111,18 @@ MAX_CLOCK_SPAN = timedelta(hours=16)
 MAX_LATE_SNAP = timedelta(minutes=1)
 
 Window = tuple[datetime, datetime]
+
+# Approved OT always gets NSD, whatever the policy says
+OT_NSD_REMARK = "Approved OT: NSD always applied."
+
+
+def with_ot_nsd(rule: PolicyRule) -> PolicyRule:
+    """
+    Copy of the policy rule with NSD switched on (approved OT only).
+    Example:
+        "Requires Time In / Out (No NSD)" -> compute_nsd True, remark "Approved OT: NSD always applied."
+    """
+    return rule if rule.compute_nsd else replace(rule, compute_nsd=True, description=OT_NSD_REMARK)
 
 
 # ============================================================
@@ -202,6 +216,7 @@ def allocate_ot(
     """
     OT hours, computed as is: one straight block, no break, no deduction.
     Still cut at midnight, tagged with the day code and split regular / NSD.
+    NSD is ALWAYS applied to approved OT, even on a (No NSD) policy.
     rest_dates: the employee's weekly off dates -> OT on those dates is RD-OT.
     Returns (trace, (start, end)).
 
@@ -209,7 +224,7 @@ def allocate_ot(
         06:00-18:00 RD-OT 12:00
     """
     end = start + paid
-    trace = allocate(start, end, rule.compute_nsd, holiday_lookup, values, OT_SUFFIX, rest_day, rest_dates)
+    trace = allocate(start, end, True, holiday_lookup, values, OT_SUFFIX, rest_day, rest_dates)
     return trace, (start, end)
 
 
@@ -306,23 +321,21 @@ def snap_early_start(
     paid: timedelta,
 ) -> tuple[datetime, list[str]]:
     """
-    Special case (IE0-1727 type): early clock-in BEFORE the NSD window on a shift
-    that runs into NSD -> ordinary hours start at Shift start.
-    The early minutes are regular time and are what the 8h cap removes; counting
-    them pushes the end of the shift back and loses NSD at the end.
+    Early clock-in on a shift that touches NSD -> ordinary hours start at Shift start.
+    The early minutes are what the 8h cap removes, so the paid hours sit inside
+    the scheduled shift. Applies whether the early minutes are inside or outside
+    10 PM - 6 AM.
 
     Applies only when ALL are true:
         clock-based policy with NSD and a break (Same Day Split Shift excluded),
         start is before Shift start,
         the shift overlaps 10 PM - 6 AM,
-        the early minutes (Clock In -> Shift start) have NO NSD
-            (11PM / 12AM / 4AM / 5AM shifts are skipped: their early minutes are
-             already NSD, moving them would LOWER NSD),
         Shift start + paid + break still ends by Clock Out (+15 min tolerance).
 
     Example (IE0-1727 Oct 26: shift 9PM-6AM, Clock In 20:53:03, paid 8h):
         start -> 21:00 -> 21:00-01:00 | BREAK | 02:00-06:00 -> Ord 1:00 + Ord-ND 7:00
-    Example (IE0-063 Oct 21: shift 4:30AM, Clock In 04:07) -> kept at Clock In
+    Example (IE0-063 Oct 21: shift 4:30AM-1:30PM, Clock In 04:07:55, paid 8h):
+        start -> 04:30 -> 04:30-08:30 | BREAK | 09:30-13:30 -> Ord 6:30 + Ord-ND 1:30
     """
     if rule.time_source != "clock" or not rule.compute_nsd or not rule.has_break:
         return start, []
@@ -331,8 +344,6 @@ def snap_early_start(
     if shift_start is None or start >= shift_start:
         return start, []
     if calculate_nsd_duration(shift_start, shift_end) <= ZERO_DURATION:
-        return start, []
-    if calculate_nsd_duration(start, shift_start) > ZERO_DURATION:
         return start, []
 
     _, clock_end = get_clock_window(row.get("Date"), row.get("Clock In"), row.get("Clock Out"))
@@ -370,10 +381,37 @@ def check_attendance(
     Example (IE0-1970, shift 6:00AM, Clock In 18:01):
         -> ["CHECK: Clock In 18:01 is 11:59 from Shift start 06:00."]
     """
-    if rule.time_source != "clock":
-        return []
-
     flags = []
+
+    # Review flag only: do not change the computed hours or Breakdown Valid.
+    # Regular, non-half-day rows with at least 9h Total Work but under 8h
+    # Final Work need payroll validation (for example IE0-2325 Oct 22).
+    status_text = normalize_text(row.get("Status Final") or row.get("Status") or row.get("Status_Unmand")).lower()
+    detailed_status = normalize_text(row.get("Detailed Status") or row.get("Final Detailed Status")).lower()
+    is_regular_day = "weekly off" not in status_text and "holiday" not in status_text
+    is_half_day = "half day" in status_text or "half day" in detailed_status
+    has_overtime = parse_duration(row.get("Overtime")) > ZERO_DURATION
+    total_work = parse_duration(row.get("Total Work Hours") or row.get("Total Work Duration"))
+
+    final_raw = row.get("Final Work Hours")
+    if is_missing(final_raw):
+        final_raw = row.get("Final Work Duration")
+    if is_missing(final_raw):
+        final_work = seconds_to_duration(row.get("Hours"))
+    else:
+        final_work = parse_duration(final_raw)
+
+    if (
+        is_regular_day
+        and not is_half_day
+        and not has_overtime
+        and total_work >= timedelta(hours=9)
+        and ZERO_DURATION < final_work < timedelta(hours=8)
+    ):
+        flags.append("CHECK: Short final hours")
+
+    if rule.time_source != "clock":
+        return flags
     clock_start, clock_end = get_clock_window(row.get("Date"), row.get("Clock In"), row.get("Clock Out"))
     if clock_start is None:
         return flags
@@ -556,7 +594,7 @@ def breakdown_ordinary_no_ot(row: pd.Series, holiday_lookup: Optional[dict] = No
             f"{source} unavailable. All hours assigned to {day_code}.",
         )
 
-    # Step 6: Early (before NSD) -> Shift start | Late -> end lined up with Clock Out
+    # Step 6: Early (NSD shift) -> Shift start | Late -> end lined up with Clock Out
     start, early_notes = snap_early_start(row, rule, start, total)
     start, late_notes = snap_late_start(row, rule, start, total)
     flags += early_notes + late_notes
@@ -640,7 +678,7 @@ def breakdown_ordinary_ot(
         OT (where)     = approved OT windows (ot.py); day code = day the OT happens
         No OT window   = OT placed right after the last work piece (flagged)
         OT break       = none — OT is computed as is (any length)
-        Early clock-in = before NSD on an NSD shift -> ordinary starts at Shift start
+        Early clock-in = NSD shift -> ordinary starts at Shift start
         OT rest day    = OT on the employee's weekly off date -> RD-OT (rest_day_lookup)
         Overlap        = OT window part inside ordinary hours is cut out,
                          that OT moves after the last work ("OVERLAP" remark)
@@ -698,7 +736,7 @@ def breakdown_ordinary_ot(
     # Step 5: Ordinary starts after any OT that comes first (pre-shift / covers the start)
     start = get_ordinary_start(row, work_start, windows)
 
-    # Step 5b: Early clock-in before NSD (no pre-shift OT in the way) -> Shift start
+    # Step 5b: Early clock-in on an NSD shift (no pre-shift OT in the way) -> Shift start
     start, early_notes = snap_early_start(row, rule, start, ordinary)
     notes += early_notes
 
@@ -779,6 +817,7 @@ def get_premium_hours(
         Logs           = Clock Out - Clock In (backup)
 
         1. OT <= window span (and <= logs, if logs exist) -> paid OT, start = first OT start
+                                                             (or Clock In, if Clock In is later)
         2. OT <= window span, OT > logs                   -> paid logs, start = first OT start
         3. OT >  window span, OT <= logs                  -> paid OT, start = policy start
                                                              "Wrong OT window filing"
@@ -810,9 +849,21 @@ def get_premium_hours(
 
     # 1 / 2: OT fits the OT window -> OT window used
     if fits_window:
+        start, source, start_notes = window_start, "OT start", []
+
+        # Filed window starts before the actual Clock In -> start at Clock In
+        if clock_start is not None:
+            shift_start, _ = get_shift_window(row.get("Date"), row.get("Shift"))
+            actual_in = align_to_shift(clock_start, shift_start)
+            if actual_in > window_start:
+                start, source = actual_in, "Clock In"
+                start_notes = [
+                    f"Clock In {actual_in:%H:%M} later than OT start {window_start:%H:%M}. Started at Clock In."
+                ]
+
         if logs is not None and not fits_logs:
-            return logs, window_start, "OT start", [f"Overtime {ot_hm} > logs {logs_hm}. Logs used, from OT start."]
-        return overtime, window_start, "OT start", ["OT window used."]
+            return logs, start, source, [*start_notes, f"Overtime {ot_hm} > logs {logs_hm}. Logs used."]
+        return overtime, start, source, ["OT window used.", *start_notes]
 
     # 3 / 4: OT fits the logs -> logs used
     if fits_logs:
@@ -898,6 +949,9 @@ def breakdown_premium(
 
     # Step 4: Paid hours + start -> OT window first, Clock In/Out as backup
     paid, start, source, notes = get_premium_hours(row, rule, ot_windows)
+
+    # Step 4b: every premium hour is approved OT -> NSD always applied
+    rule = with_ot_nsd(rule)
     paid, total_notes = cap_by_total_work(row, paid)
     notes = [*check_logs(row), *notes, *total_notes]
     if paid <= ZERO_DURATION:
